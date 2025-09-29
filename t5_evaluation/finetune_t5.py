@@ -19,8 +19,8 @@ class Config:
     DATASET_NAME = "deepmind/narrativeqa"
     
     # Training
-    TRAIN_BATCH_SIZE = 10 # Reduced for larger model and input size
-    VALID_BATCH_SIZE = 32
+    TRAIN_BATCH_SIZE = 10  # Further reduced to prevent OOM
+    VALID_BATCH_SIZE = 16  # Reduced validation batch size
     EPOCHS = 30
     LEARNING_RATE = 5e-5 # Standard for fine-tuning
     
@@ -39,6 +39,10 @@ class Config:
     # Early Stopping
     EARLY_STOPPING_PATIENCE = 2
 
+    # Memory Optimization
+    USE_GRADIENT_CHECKPOINTING = True  # Trade compute for memory
+    USE_MIXED_PRECISION = True  # Use fp16 for faster training and less memory
+    
     # Label handling
     IGNORE_PAD_TOKEN_FOR_LOSS = True  # When True, pad tokens in labels will be replaced with -100 so they are ignored by CrossEntropyLoss
     
@@ -227,14 +231,18 @@ def create_dataloaders(tokenizer):
         processed_train, 
         shuffle=True, 
         batch_size=Config.TRAIN_BATCH_SIZE,
-        num_workers=4,  # Add some parallel data loading
-        pin_memory=True
+        num_workers=2,  # Reduced to save memory
+        pin_memory=True,
+        persistent_workers=True,  # Keep workers alive between epochs
+        prefetch_factor=2  # Reduce prefetch to save memory
     )
     valid_dataloader = DataLoader(
         processed_valid, 
         batch_size=Config.VALID_BATCH_SIZE,
-        num_workers=4,
-        pin_memory=True
+        num_workers=2,  # Reduced to save memory
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=2
     )
     
     return train_dataloader, valid_dataloader, test_dataset
@@ -246,14 +254,26 @@ def create_dataloaders(tokenizer):
 def train_epoch(model, dataloader, optimizer, lr_scheduler, accelerator):
     model.train()
     total_loss = 0
-    for batch in tqdm(dataloader, desc="Training", disable=not accelerator.is_local_main_process):
+    
+    for step, batch in enumerate(tqdm(dataloader, desc="Training", disable=not accelerator.is_local_main_process)):
         optimizer.zero_grad()
+        
+        # Mixed precision is handled automatically by accelerator
         outputs = model(**batch)
         loss = outputs.loss
         accelerator.backward(loss)
+        
+        # Clip gradients to prevent exploding gradients
+        accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         lr_scheduler.step()
+                
         total_loss += loss.item()
+        
+        # Clear cache periodically to prevent memory buildup
+        if step % 50 == 0:
+            torch.cuda.empty_cache()
+            
     return total_loss / len(dataloader)
 
 def evaluate(model, dataloader, tokenizer, accelerator):
@@ -261,19 +281,27 @@ def evaluate(model, dataloader, tokenizer, accelerator):
     all_preds, all_labels = [], []
     total_loss = 0
     
-    for batch in tqdm(dataloader, desc="Evaluating", disable=not accelerator.is_local_main_process):
+    for step, batch in enumerate(tqdm(dataloader, desc="Evaluating", disable=not accelerator.is_local_main_process)):
         with torch.no_grad():
+            # Mixed precision is handled automatically by accelerator
             outputs = model(**batch)
             loss = outputs.loss
             total_loss += loss.item()
             
+            # Use more conservative generation settings to save memory
             generated_tokens = accelerator.unwrap_model(model).generate(
                 batch["input_ids"],
                 attention_mask=batch["attention_mask"],
                 max_length=Config.MAX_TARGET_LENGTH,
-                num_beams=4,
-                early_stopping=True
+                num_beams=2,  # Reduced from 4 to save memory
+                early_stopping=True,
+                do_sample=False,  # Deterministic generation
+                pad_token_id=tokenizer.pad_token_id
             )
+            
+            # More aggressive cache clearing during evaluation
+            if step % 2 == 0:  # Clear every 2 steps instead of 4
+                torch.cuda.empty_cache()
             
             generated_tokens = accelerator.pad_across_processes(generated_tokens, dim=1, pad_index=tokenizer.pad_token_id)
             labels = batch["labels"]
@@ -346,7 +374,9 @@ def plot_metrics(metrics, plots_dir):
 # -----------------------------------------------------------
 
 def main():
-    accelerator = Accelerator()
+    # Configure mixed precision training
+    mixed_precision = "fp16" if Config.USE_MIXED_PRECISION else "no"
+    accelerator = Accelerator(mixed_precision=mixed_precision)
     
     # Print configuration for debugging
     if accelerator.is_main_process:
@@ -357,9 +387,17 @@ def main():
         print(f"   - Train samples: {Config.TRAIN_SAMPLES}")
         print(f"   - Valid samples: {Config.VALID_SAMPLES}")
         print(f"   - Max input length: {Config.MAX_INPUT_LENGTH}")
+        print(f"   - Mixed precision: {mixed_precision}")
+        print(f"   - Gradient checkpointing: {Config.USE_GRADIENT_CHECKPOINTING}")
     
     tokenizer = T5Tokenizer.from_pretrained(Config.MODEL_NAME)
     model = T5ForConditionalGeneration.from_pretrained(Config.MODEL_NAME)
+    
+    # Enable gradient checkpointing for memory efficiency
+    if Config.USE_GRADIENT_CHECKPOINTING:
+        model.gradient_checkpointing_enable()
+        if accelerator.is_main_process:
+            print("✅ Gradient checkpointing enabled")
     
     train_dataloader, valid_dataloader, _ = create_dataloaders(tokenizer)
     
@@ -396,13 +434,20 @@ def main():
         if valid_loss < best_valid_loss:
             best_valid_loss = valid_loss
             epochs_no_improve = 0
+            
+            # All processes must wait here before the main process saves the model.
+            accelerator.wait_for_everyone()
+            
             if accelerator.is_main_process:
                 accelerator.print("⏳ Saving best model... (this might take a while)")
-                accelerator.wait_for_everyone()
                 unwrapped_model = accelerator.unwrap_model(model)
                 unwrapped_model.save_pretrained(Config.OUTPUT_DIR)
                 tokenizer.save_pretrained(Config.OUTPUT_DIR)
                 accelerator.print(f"✅ Best model saved to {Config.OUTPUT_DIR}")
+                
+            # Clean up memory after saving
+            torch.cuda.empty_cache()
+            accelerator.wait_for_everyone()  # Ensure all processes clear cache
         else:
             epochs_no_improve += 1
             if epochs_no_improve >= Config.EARLY_STOPPING_PATIENCE:
