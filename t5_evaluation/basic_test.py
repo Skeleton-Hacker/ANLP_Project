@@ -11,6 +11,10 @@ import random
 # -----------------------------------------------------------
 
 def compute_f1(prediction: str, ground_truth: str) -> float:
+    """
+    Compute F1 score between prediction and ground truth.
+    Returns a float between 0.0 and 1.0 (not percentage).
+    """
     pred_tokens = prediction.lower().split()
     truth_tokens = ground_truth.lower().split()
     common = set(pred_tokens) & set(truth_tokens)
@@ -40,7 +44,7 @@ def compute_rouge(predictions, references):
 # 2. Baseline Evaluation
 # -----------------------------------------------------------
 
-def evaluate_baseline(model_name="t5-base", num_samples=50, device=None, save_samples=5):
+def evaluate_baseline(model_name="t5-small", num_samples=50, device=None, save_samples=5):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Running baseline on {device} ...")
 
@@ -51,6 +55,7 @@ def evaluate_baseline(model_name="t5-base", num_samples=50, device=None, save_sa
 
     qa_predictions, qa_references, qa_examples, qa_f1s = [], [], [], []
     sum_predictions, sum_references, sum_examples = [], [], []
+    good_qa_examples, good_sum_examples = [], []  # Track good examples
 
     for idx, sample in enumerate(tqdm(dataset, desc="Evaluating")):
         document = sample["document"]["text"] if "document" in sample else ""
@@ -72,7 +77,18 @@ def evaluate_baseline(model_name="t5-base", num_samples=50, device=None, save_sa
 
             qa_predictions.append(pred)
             qa_references.append(answer)
-            qa_f1s.append(compute_f1(pred, answer))
+            f1_score = compute_f1(pred, answer)
+            qa_f1s.append(f1_score)
+
+            # Collect good examples (F1 > 0.3 means decent overlap)
+            if f1_score > 0.3 and len(good_qa_examples) < 10:
+                good_qa_examples.append({
+                    "question": question,
+                    "ground_truth": answer,
+                    "prediction": pred,
+                    "f1_score": f1_score,
+                    "doc_excerpt": document[:200] + "..."
+                })
 
             if random.random() < (save_samples / num_samples):
                 qa_examples.append({
@@ -94,6 +110,14 @@ def evaluate_baseline(model_name="t5-base", num_samples=50, device=None, save_sa
             sum_predictions.append(sum_pred)
             sum_references.append(summary)
 
+            # Collect good summarization examples (basic quality check)
+            if len(sum_pred.split()) > 5 and len(good_sum_examples) < 10:  # At least 5 words
+                good_sum_examples.append({
+                    "reference_summary": summary,
+                    "prediction": sum_pred,
+                    "doc_excerpt": document[:200] + "..."
+                })
+
             if random.random() < (save_samples / num_samples):
                 sum_examples.append({
                     "reference_summary": summary,
@@ -105,12 +129,32 @@ def evaluate_baseline(model_name="t5-base", num_samples=50, device=None, save_sa
     avg_f1 = float(np.mean(qa_f1s) * 100) if qa_f1s else 0.0
     rouge_scores = compute_rouge(sum_predictions, sum_references) if sum_predictions else {}
 
-    print(f"\nQA Avg F1: {avg_f1:.2f}%")
+    print(f"\nQA Avg F1: {avg_f1:.2f}% (Note: F1 ranges from 0-1, displayed as percentage 0-100%)")
     print(f"Summarization ROUGE: {rouge_scores}")
 
+    # Print good examples
+    print("\n" + "="*80)
+    print("GOOD QA EXAMPLES (F1 > 0.3):")
+    print("="*80)
+    for i, example in enumerate(good_qa_examples[:10], 1):
+        print(f"\n--- QA Example {i} (F1: {example['f1_score']:.3f}) ---")
+        print(f"Question: {example['question']}")
+        print(f"Ground Truth: {example['ground_truth']}")
+        print(f"Prediction: {example['prediction']}")
+        print(f"Document: {example['doc_excerpt']}")
+
+    print("\n" + "="*80)
+    print("SUMMARIZATION EXAMPLES:")
+    print("="*80)
+    for i, example in enumerate(good_sum_examples[:10], 1):
+        print(f"\n--- Summary Example {i} ---")
+        print(f"Reference: {example['reference_summary']}")
+        print(f"Prediction: {example['prediction']}")
+        print(f"Document: {example['doc_excerpt']}")
+
     return {
-        "qa": {"f1": avg_f1, "examples": qa_examples},
-        "summarization": {"rouge": rouge_scores, "examples": sum_examples}
+        "qa": {"f1": avg_f1, "examples": qa_examples, "good_examples": good_qa_examples},
+        "summarization": {"rouge": rouge_scores, "examples": sum_examples, "good_examples": good_sum_examples}
     }
 
 # -----------------------------------------------------------
