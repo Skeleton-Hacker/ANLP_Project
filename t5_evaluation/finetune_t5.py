@@ -19,9 +19,9 @@ class Config:
     DATASET_NAME = "deepmind/narrativeqa"
     
     # Training
-    TRAIN_BATCH_SIZE = 4 # Reduced for larger model and input size
-    VALID_BATCH_SIZE = 8
-    EPOCHS = 10
+    TRAIN_BATCH_SIZE = 10 # Reduced for larger model and input size
+    VALID_BATCH_SIZE = 32
+    EPOCHS = 30
     LEARNING_RATE = 5e-5 # Standard for fine-tuning
     
     # Data
@@ -38,6 +38,9 @@ class Config:
     
     # Early Stopping
     EARLY_STOPPING_PATIENCE = 2
+
+    # Label handling
+    IGNORE_PAD_TOKEN_FOR_LOSS = True  # When True, pad tokens in labels will be replaced with -100 so they are ignored by CrossEntropyLoss
     
     # Paths
     OUTPUT_DIR = "t5-narrativeqa-finetuned"
@@ -115,14 +118,23 @@ def preprocess_function(examples, tokenizer):
     
     # Tokenize labels in batch
     labels = tokenizer(
-        text_target=answers, 
-        max_length=Config.MAX_TARGET_LENGTH, 
-        truncation=True, 
+        text_target=answers,
+        max_length=Config.MAX_TARGET_LENGTH,
+        truncation=True,
         padding="max_length",
         return_tensors=None
     )
 
-    model_inputs["labels"] = labels["input_ids"]
+    # IMPORTANT: Mask pad tokens so loss is not dominated by padding (was causing model to learn to output only <pad>)
+    label_ids = labels["input_ids"]
+    if Config.IGNORE_PAD_TOKEN_FOR_LOSS:
+        pad_token_id = tokenizer.pad_token_id
+        label_ids = [
+            [token_id if token_id != pad_token_id else -100 for token_id in seq]
+            for seq in label_ids
+        ]
+
+    model_inputs["labels"] = label_ids
     return model_inputs
 
 def create_dataloaders(tokenizer):
@@ -136,7 +148,7 @@ def create_dataloaders(tokenizer):
     
     # Create a cache key based on configuration
     cache_key = hashlib.md5(
-        f"{Config.MODEL_NAME}_{Config.TRAIN_SAMPLES}_{Config.VALID_SAMPLES}_{Config.MAX_INPUT_LENGTH}_{Config.MAX_TARGET_LENGTH}".encode()
+        f"{Config.MODEL_NAME}_{Config.TRAIN_SAMPLES}_{Config.VALID_SAMPLES}_{Config.MAX_INPUT_LENGTH}_{Config.MAX_TARGET_LENGTH}_{int(Config.IGNORE_PAD_TOKEN_FOR_LOSS)}".encode()
     ).hexdigest()
     
     train_cache_path = cache_dir / f"train_{cache_key}.pkl"
@@ -264,24 +276,34 @@ def evaluate(model, dataloader, tokenizer, accelerator):
             )
             
             generated_tokens = accelerator.pad_across_processes(generated_tokens, dim=1, pad_index=tokenizer.pad_token_id)
-            labels = accelerator.pad_across_processes(batch["labels"], dim=1, pad_index=tokenizer.pad_token_id)
+            labels = batch["labels"]
 
-            # Decode before gathering to avoid issues with padding and extra tokens
+            # Replace -100 with pad_token_id for decoding, as tokenizer cannot handle -100
+            labels_for_decoding = labels.clone()
+            labels_for_decoding[labels_for_decoding == -100] = tokenizer.pad_token_id
+            
+            labels_for_decoding = accelerator.pad_across_processes(labels_for_decoding, dim=1, pad_index=tokenizer.pad_token_id)
+
+            # It's crucial to decode before gathering, as gathering pads tensors to the same length,
+            # which can add extra padding tokens that affect the decoded text.
             preds = [tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_tokens]
-            labels_text = [tokenizer.decode(l, skip_special_tokens=True, clean_up_tokenization_spaces=True) for l in labels]
+            labels_text = [tokenizer.decode(l, skip_special_tokens=True, clean_up_tokenization_spaces=True) for l in labels_for_decoding]
 
-            # Gather decoded text from all processes
-            gathered_preds, gathered_labels = accelerator.gather_for_metrics((preds, labels_text))
+            # Gather the decoded text from all processes.
+            # gather_for_metrics returns a single list of all gathered items, not a tuple.
+            gathered_results = accelerator.gather_for_metrics((preds, labels_text))
+            gathered_preds, gathered_labels = gathered_results[0], gathered_results[1]
 
             all_preds.extend(gathered_preds)
             all_labels.extend(gathered_labels)
 
-    # Ensure metrics are computed only on the main process after gathering
+    # Metrics should only be computed on the main process after all data is gathered.
     if accelerator.is_main_process:
         f1 = np.mean([compute_f1(p, l) for p, l in zip(all_preds, all_labels)]) * 100
         rouge = compute_rouge(all_preds, all_labels)
     else:
-        f1, rouge = 0.0, {}
+        # On other processes, return dummy values.
+        f1, rouge = 0.0, {"rouge1": 0.0, "rouge2": 0.0, "rougeL": 0.0}
     
     return total_loss / len(dataloader), f1, rouge
 
@@ -375,6 +397,7 @@ def main():
             best_valid_loss = valid_loss
             epochs_no_improve = 0
             if accelerator.is_main_process:
+                accelerator.print("⏳ Saving best model... (this might take a while)")
                 accelerator.wait_for_everyone()
                 unwrapped_model = accelerator.unwrap_model(model)
                 unwrapped_model.save_pretrained(Config.OUTPUT_DIR)
