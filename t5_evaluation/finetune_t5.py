@@ -1,8 +1,7 @@
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 from transformers import T5Tokenizer, T5ForConditionalGeneration, get_scheduler
-from datasets import load_dataset, Dataset
+from datasets import load_dataset
 from tqdm.auto import tqdm
 import numpy as np
 import os
@@ -11,48 +10,39 @@ import matplotlib.pyplot as plt
 from accelerate import Accelerator
 from sklearn.model_selection import train_test_split
 
-# -----------------------------------------------------------
-# 0. Configuration
-# -----------------------------------------------------------
 class Config:
     MODEL_NAME = "t5-small"
     DATASET_NAME = "deepmind/narrativeqa"
     
     # Training
-    TRAIN_BATCH_SIZE = 10  # Further reduced to prevent OOM
-    VALID_BATCH_SIZE = 16  # Reduced validation batch size
+    TRAIN_BATCH_SIZE = 24
+    VALID_BATCH_SIZE = 32
     EPOCHS = 30
-    LEARNING_RATE = 5e-5 # Standard for fine-tuning
+    LEARNING_RATE = 5e-5
     
     # Data
-    MAX_INPUT_LENGTH = 1024 # Increased to capture more context
+    MAX_INPUT_LENGTH = 1024
     MAX_TARGET_LENGTH = 128
-    TRAIN_SAMPLES = 10000  # Using a larger subset for better training
+    TRAIN_SAMPLES = 10000
     VALID_SAMPLES = 1000
     TEST_SAMPLES = 1000
     
-    # Processing Optimization
-    NUM_PROC = 32  # Use most of your 40 CPUs for preprocessing
-    CACHE_DIR = "./cache"  # Directory to save preprocessed datasets
-    FORCE_REPROCESS = False  # Set to True to ignore cached data
+    # Processing
+    NUM_PROC = 16
+    CACHE_DIR = "./cache"
+    FORCE_REPROCESS = False
     
-    # Early Stopping
+    # Training optimization
     EARLY_STOPPING_PATIENCE = 2
-
-    # Memory Optimization
-    USE_GRADIENT_CHECKPOINTING = True  # Trade compute for memory
-    USE_MIXED_PRECISION = True  # Use fp16 for faster training and less memory
+    USE_GRADIENT_CHECKPOINTING = True
+    USE_MIXED_PRECISION = True
+    IGNORE_PAD_TOKEN_FOR_LOSS = True
     
-    # Label handling
-    IGNORE_PAD_TOKEN_FOR_LOSS = True  # When True, pad tokens in labels will be replaced with -100 so they are ignored by CrossEntropyLoss
-    
-    # Paths
+    # Output
     OUTPUT_DIR = "t5-narrativeqa-finetuned"
     PLOTS_DIR = "plots"
 
-# -----------------------------------------------------------
-# 1. Metrics
-# -----------------------------------------------------------
+
 
 def compute_f1(prediction: str, ground_truth: str) -> float:
     pred_tokens = prediction.lower().split()
@@ -80,16 +70,11 @@ def compute_rouge(predictions, references):
         print("⚠️ Install rouge-score with: pip install rouge-score")
         return {"rouge1": 0, "rouge2": 0, "rougeL": 0}
 
-# -----------------------------------------------------------
-# 2. Data Loading and Preprocessing
-# -----------------------------------------------------------
-
 def clean_text(text):
-    """Removes boilerplate, HTML, and extra whitespace. Optimized version."""
+    """Remove boilerplate, HTML, and extra whitespace."""
     if not text:
         return ""
     
-    # Combine regex patterns for better performance
     patterns = [
         (r'ï»¿The Project Gutenberg.*', ''),
         (r'<html>.*</html>', ''),
@@ -103,24 +88,20 @@ def clean_text(text):
     return text.strip()
 
 def preprocess_function(examples, tokenizer):
-    # Batch process all examples at once for efficiency
     docs = [clean_text(doc["text"]) for doc in examples["document"]]
     questions = [q["text"] for q in examples["question"]]
-    answers = [ans[0]["text"] for ans in examples["answers"]]  # Use first answer
+    answers = [ans[0]["text"] for ans in examples["answers"]]
     
-    # Create input format in batch
     inputs = [f"question: {q} context: {d}" for q, d in zip(questions, docs)]
     
-    # Tokenize in batch - much faster
     model_inputs = tokenizer(
         inputs, 
         max_length=Config.MAX_INPUT_LENGTH, 
         truncation=True, 
         padding="max_length",
-        return_tensors=None  # Return lists instead of tensors for better memory usage
+        return_tensors=None
     )
     
-    # Tokenize labels in batch
     labels = tokenizer(
         text_target=answers,
         max_length=Config.MAX_TARGET_LENGTH,
@@ -129,7 +110,7 @@ def preprocess_function(examples, tokenizer):
         return_tensors=None
     )
 
-    # IMPORTANT: Mask pad tokens so loss is not dominated by padding (was causing model to learn to output only <pad>)
+    # Mask pad tokens in labels
     label_ids = labels["input_ids"]
     if Config.IGNORE_PAD_TOKEN_FOR_LOSS:
         pad_token_id = tokenizer.pad_token_id
@@ -231,25 +212,19 @@ def create_dataloaders(tokenizer):
         processed_train, 
         shuffle=True, 
         batch_size=Config.TRAIN_BATCH_SIZE,
-        num_workers=2,  # Reduced to save memory
-        pin_memory=True,
-        persistent_workers=True,  # Keep workers alive between epochs
-        prefetch_factor=2  # Reduce prefetch to save memory
+        num_workers=2,
+        pin_memory=True
     )
     valid_dataloader = DataLoader(
         processed_valid, 
         batch_size=Config.VALID_BATCH_SIZE,
-        num_workers=2,  # Reduced to save memory
-        pin_memory=True,
-        persistent_workers=True,
-        prefetch_factor=2
+        num_workers=2,
+        pin_memory=True
     )
     
     return train_dataloader, valid_dataloader, test_dataset
 
-# -----------------------------------------------------------
-# 3. Training and Evaluation Loop
-# -----------------------------------------------------------
+
 
 def train_epoch(model, dataloader, optimizer, lr_scheduler, accelerator):
     model.train()
@@ -257,20 +232,14 @@ def train_epoch(model, dataloader, optimizer, lr_scheduler, accelerator):
     
     for step, batch in enumerate(tqdm(dataloader, desc="Training", disable=not accelerator.is_local_main_process)):
         optimizer.zero_grad()
-        
-        # Mixed precision is handled automatically by accelerator
         outputs = model(**batch)
         loss = outputs.loss
         accelerator.backward(loss)
-        
-        # Clip gradients to prevent exploding gradients
         accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         lr_scheduler.step()
-                
         total_loss += loss.item()
         
-        # Clear cache periodically to prevent memory buildup
         if step % 50 == 0:
             torch.cuda.empty_cache()
             
@@ -335,9 +304,7 @@ def evaluate(model, dataloader, tokenizer, accelerator):
     
     return total_loss / len(dataloader), f1, rouge
 
-# -----------------------------------------------------------
-# 4. Plotting
-# -----------------------------------------------------------
+
 
 def plot_metrics(metrics, plots_dir):
     os.makedirs(plots_dir, exist_ok=True)
@@ -369,12 +336,7 @@ def plot_metrics(metrics, plots_dir):
     plt.savefig(os.path.join(plots_dir, "finetuning_metrics.png"))
     print(f"✅ Plots saved to {plots_dir}")
 
-# -----------------------------------------------------------
-# 5. Main Execution
-# -----------------------------------------------------------
-
 def main():
-    # Configure mixed precision training
     mixed_precision = "fp16" if Config.USE_MIXED_PRECISION else "no"
     accelerator = Accelerator(mixed_precision=mixed_precision)
     
@@ -393,9 +355,10 @@ def main():
     tokenizer = T5Tokenizer.from_pretrained(Config.MODEL_NAME)
     model = T5ForConditionalGeneration.from_pretrained(Config.MODEL_NAME)
     
-    # Enable gradient checkpointing for memory efficiency
+    # Configure model for gradient checkpointing
     if Config.USE_GRADIENT_CHECKPOINTING:
         model.gradient_checkpointing_enable()
+        model.config.use_cache = False  # Required for gradient checkpointing
         if accelerator.is_main_process:
             print("✅ Gradient checkpointing enabled")
     
@@ -458,9 +421,6 @@ def main():
         plot_metrics(metrics, Config.PLOTS_DIR)
 
 if __name__ == "__main__":
-    # To run:
-    # 1. Configure your accelerator: `accelerate config`
-    # 2. Launch the script: `accelerate launch t5_evaluation/finetune_t5.py`
     main()
 
 
