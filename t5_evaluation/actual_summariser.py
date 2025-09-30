@@ -1,13 +1,9 @@
 import torch
-import torch.multiprocessing as mp
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from datasets import load_dataset
 from tqdm import tqdm
 import numpy as np
 import json
-import time
-from queue import Queue
-from threading import Thread
 
 # -----------------------------------------------------------
 # 1. Metrics
@@ -16,30 +12,50 @@ from threading import Thread
 def compute_metrics(predictions, references, device):
     """
     Compute ROUGE and BERT scores for a list of predictions and references.
+    Uses multiple GPUs if available: ROUGE on GPU 0, BERT on GPU 1.
     """
     scores = {}
+    
+    # Determine devices for metric computation
+    rouge_device = "cpu"  # ROUGE is CPU-based anyway
+    bert_device = device  # Default to the main device
+    
+    # If multiple GPUs are available, use GPU 1 for BERT score
+    if torch.cuda.device_count() > 1:
+        bert_device = "cuda:1"
+        print(f"Using GPU 1 for BERT score computation")
+    
+    print(f"Computing ROUGE scores on {rouge_device}, BERT scores on {bert_device}")
 
-    # ROUGE scores
+    # ROUGE scores (CPU-based)
     try:
         from rouge_score import rouge_scorer
         scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
         rouge_scores = {"rouge1": [], "rouge2": [], "rougeL": []}
-        for pred, ref in zip(predictions, references):
+        
+        print("Computing ROUGE scores...")
+        for pred, ref in tqdm(zip(predictions, references), desc="ROUGE", total=len(predictions)):
             result = scorer.score(ref, pred)
             for k in rouge_scores:
                 rouge_scores[k].append(result[k].fmeasure)
         scores.update({k: float(np.mean(v) * 100) for k, v in rouge_scores.items()})
+        print(f"ROUGE scores computed: R-1: {scores['rouge1']:.2f}, R-2: {scores['rouge2']:.2f}, R-L: {scores['rougeL']:.2f}")
     except ImportError:
         print("⚠️ Install rouge-score with: pip install rouge-score")
         scores.update({"rouge1": 0, "rouge2": 0, "rougeL": 0})
 
-    # BERTScore
+    # BERTScore (GPU-based if available)
     try:
         from bert_score import score as bert_scorer
-        P, R, F1 = bert_scorer(predictions, references, lang="en", device=device, verbose=False)
+        print("Computing BERT scores...")
+        P, R, F1 = bert_scorer(predictions, references, lang="en", device=bert_device, verbose=False)
         scores["bert_score"] = F1.mean().item() * 100
+        print(f"BERT score computed: {scores['bert_score']:.2f}")
     except ImportError:
         print("⚠️ Install bert-score with: pip install bert-score")
+        scores["bert_score"] = 0
+    except Exception as e:
+        print(f"⚠️ Error computing BERT score: {e}")
         scores["bert_score"] = 0
         
     return scores
@@ -48,7 +64,7 @@ def compute_metrics(predictions, references, device):
 # 2. Summarization Model Evaluation
 # -----------------------------------------------------------
 
-def evaluate_summarization_model(device, model_name="allenai/led-large-16384-arxiv", num_samples=10, input_max_length=1024, is_main_process=False):
+def evaluate_summarization_model(device, model_name="allenai/led-large-16384-arxiv", num_samples=10, input_max_length=1024):
     """
     Evaluates a dedicated summarization model on the NarrativeQA dataset for a specific input length.
     """
@@ -60,8 +76,7 @@ def evaluate_summarization_model(device, model_name="allenai/led-large-16384-arx
     
     predictions, references = [], []
 
-    # Use tqdm only on the main process
-    progress_bar = tqdm(dataset, desc=f"Evaluating (len: {input_max_length}) on {device}", disable=not is_main_process)
+    progress_bar = tqdm(dataset, desc=f"Evaluating (len: {input_max_length}) on {device}")
 
     for sample in progress_bar:
         document = sample.get("document", {}).get("text")
@@ -95,110 +110,63 @@ def evaluate_summarization_model(device, model_name="allenai/led-large-16384-arx
 # 3. Run Evaluation Sweep
 # -----------------------------------------------------------
 
-def worker(gpu_id, task_queue, result_queue, model_name, num_samples):
-    """
-    A worker process that continuously fetches tasks from the queue and evaluates the model.
-    """
-    device = f"cuda:{gpu_id}"
-    print(f"Worker on GPU {gpu_id} started.")
-    
-    while True:
-        input_length = task_queue.get()
-        if input_length is None:  # Sentinel value to stop the worker
-            break
-            
-        print(f"GPU {gpu_id}: Starting evaluation for input length {input_length}...")
-        
-        scores = evaluate_summarization_model(
-            device=device,
-            model_name=model_name,
-            num_samples=num_samples,
-            input_max_length=input_length,
-            is_main_process=(gpu_id == 0)  # Show progress bar only for the first GPU
-        )
-        
-        result_queue.put({
-            "input_length": input_length,
-            "rouge1": scores.get("rouge1", 0),
-            "rouge2": scores.get("rouge2", 0),
-            "rougeL": scores.get("rougeL", 0),
-            "bert_score": scores.get("bert_score", 0),
-            "gpu_id": gpu_id
-        })
-        print(f"GPU {gpu_id}: Finished evaluation for input length {input_length}.")
-
 if __name__ == "__main__":
-    mp.set_start_method('spawn', force=True)
-
     NUM_SAMPLES = 100
     MODEL_NAME = "allenai/led-large-16384-arxiv"
     ALL_INPUT_LENGTHS = [1024, 2048, 4096, 8192, 16384]
     
+    # Use GPU if available, otherwise CPU
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     num_gpus = torch.cuda.device_count()
-    if num_gpus == 0:
-        print("No GPUs found. Running on CPU.")
-        # Simplified CPU execution
-        results_summary = []
-        for length in ALL_INPUT_LENGTHS:
-            scores = evaluate_summarization_model(
-                device="cpu",
-                model_name=MODEL_NAME,
-                num_samples=NUM_SAMPLES,
-                input_max_length=length,
-                is_main_process=True
-            )
-            results_summary.append({
-                "input_length": length,
-                "rouge1": scores.get("rouge1", 0),
-                "rouge2": scores.get("rouge2", 0),
-                "rougeL": scores.get("rougeL", 0),
-                "bert_score": scores.get("bert_score", 0),
-            })
-    else:
-        print(f"Found {num_gpus} GPUs.")
-        task_queue = mp.Queue()
-        result_queue = mp.Queue()
-
-        # Initially, assign one task to each GPU
-        for i in range(min(num_gpus, len(ALL_INPUT_LENGTHS))):
-            task_queue.put(ALL_INPUT_LENGTHS[i])
+    print(f"Using device: {device}")
+    print(f"Total GPUs available: {num_gpus}")
+    if num_gpus > 1:
+        print("Will use GPU 0 for model inference and GPU 1 for BERT score computation")
+    
+    results_summary = []
+    
+    for length in ALL_INPUT_LENGTHS:
+        print(f"\nEvaluating with input length: {length}")
+        scores = evaluate_summarization_model(
+            device=device,
+            model_name=MODEL_NAME,
+            num_samples=NUM_SAMPLES,
+            input_max_length=length
+        )
         
-        remaining_tasks = ALL_INPUT_LENGTHS[num_gpus:]
+        results_summary.append({
+            "input_length": length,
+            "rouge1": scores.get("rouge1", 0),
+            "rouge2": scores.get("rouge2", 0),
+            "rougeL": scores.get("rougeL", 0),
+            "bert_score": scores.get("bert_score", 0),
+        })
 
-        processes = []
-        for i in range(num_gpus):
-            p = mp.Process(target=worker, args=(i, task_queue, result_queue, MODEL_NAME, NUM_SAMPLES))
-            p.start()
-            processes.append(p)
+    # Save results to JSON file
+    output_file = "summarization_results_led.json"
+    with open(output_file, 'w') as f:
+        json.dump(results_summary, f, indent=2)
+    print(f"\n✅ Results saved to {output_file}")
 
-        results_summary = []
-        
-        # As results come in, assign new tasks
-        for _ in range(len(ALL_INPUT_LENGTHS)):
-            result = result_queue.get()
-            results_summary.append(result)
-            print(f"Main: Received result for length {result['input_length']} from GPU {result['gpu_id']}.")
-
-            if remaining_tasks:
-                next_task = remaining_tasks.pop(0)
-                print(f"Main: Assigning new task (length: {next_task}) to a free worker.")
-                task_queue.put(next_task)
-
-        # Stop all worker processes
-        for _ in range(num_gpus):
-            task_queue.put(None)
-
-        for p in processes:
-            p.join()
-
-    # Sort and print the final summary
-    results_summary.sort(key=lambda x: x['input_length'])
-
+    # Print the final summary
     print("\n" + "="*100)
     print("           PERFORMANCE SWEEP SUMMARY")
     print("="*100)
     print(f"{'Input Length':<15} | {'ROUGE-1':<15} | {'ROUGE-2':<15} | {'ROUGE-L':<15} | {'BERT Score':<15}")
     print("-" * 100)
     for result in results_summary:
-        print(f"{result['input_length']:<15} | {result['rouge1']:<15.4f} | {result['rouge2']:<15.4f} | {result['rougeL']:<15.4f} | {result.get('bert_score', 0):<15.4f}")
+        print(f"{result['input_length']:<15} | {result['rouge1']:<15.4f} | {result['rouge2']:<15.4f} | {result['rougeL']:<15.4f} | {result['bert_score']:<15.4f}")
     print("-" * 100)
+    
+    # Print some analysis
+    print("\n📊 ANALYSIS:")
+    best_rouge1 = max(results_summary, key=lambda x: x['rouge1'])
+    best_rouge2 = max(results_summary, key=lambda x: x['rouge2'])
+    best_rougeL = max(results_summary, key=lambda x: x['rougeL'])
+    best_bert = max(results_summary, key=lambda x: x['bert_score'])
+    
+    print(f"Best ROUGE-1: {best_rouge1['rouge1']:.4f} at length {best_rouge1['input_length']}")
+    print(f"Best ROUGE-2: {best_rouge2['rouge2']:.4f} at length {best_rouge2['input_length']}")
+    print(f"Best ROUGE-L: {best_rougeL['rougeL']:.4f} at length {best_rougeL['input_length']}")
+    print(f"Best BERT Score: {best_bert['bert_score']:.4f} at length {best_bert['input_length']}")
+    print("="*100)
