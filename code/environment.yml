@@ -1,0 +1,38 @@
+name: next-level-lm
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pytorch=2.3.1
+  - pytorch-cuda=12.1
+  - matplotlib
+  - seaborn
+  - pandas=2.3.2
+  - scikit-learn=1.7.2
+  - tqdm
+  - transformers=4.56.2
+  - datasets=2.16.1
+  - lightning
+  - numpy=1.26.4
+  - nltk=3.9.1
+  - wandb
+  - loguru=0.7.3
+  - pip
+  - pip:
+    - argcomplete==3.6.2
+    - better-exceptions==0.3.3
+    - docker-pycreds==0.4.0
+    - docstring_parser==0.17.0
+    - markdown-it-py==4.0.0
+    - mdurl==0.1.2
+    - pipx==1.7.1
+    - print-on-steroids==1.2.3
+    - rich==14.1.0
+    - scikit-learn==1.7.2
+    - sentence-transformers==5.1.0
+    - simple-parsing==0.1.7
+    - threadpoolctl==3.6.0
+    - userpath==1.9.2
+    - warmup_scheduler==0.3

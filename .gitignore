@@ -1,1 +1,4 @@
-__pycache__/
+*.json
+*.pkl
+*.safetensors
+*.pt__pycache__/
