@@ -105,7 +105,7 @@ class CompressionPipeline:
         print(f"Loaded {len(dataset)} documents")
         
         # Initialize semantic chunker with same model
-        chunker = SemanticChunker(
+        chunker = SemanticSentenceChunker(
             model_name=self.model_name,  # Fixed: use consistent model
             chunk_size=chunk_size,
             similarity_threshold=similarity_threshold
