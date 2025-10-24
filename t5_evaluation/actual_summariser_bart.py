@@ -10,22 +10,36 @@ import random
 # 1. Metrics
 # -----------------------------------------------------------
 
-def compute_rouge(predictions, references):
+def compute_metrics(predictions, references, device="cpu"):
     """
-    Compute ROUGE scores for a list of predictions and references.
+    Compute ROUGE and BERT scores for a list of predictions and references.
     """
+    scores = {}
+
+    # ROUGE
     try:
         from rouge_score import rouge_scorer
         scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
-        scores = {"rouge1": [], "rouge2": [], "rougeL": []}
+        rouge_scores = {"rouge1": [], "rouge2": [], "rougeL": []}
         for pred, ref in zip(predictions, references):
             result = scorer.score(ref, pred)
-            for k in scores:
-                scores[k].append(result[k].fmeasure)
-        return {k: float(np.mean(v) * 100) for k, v in scores.items()}
+            for k in rouge_scores:
+                rouge_scores[k].append(result[k].fmeasure)
+        scores.update({k: float(np.mean(v) * 100) for k, v in rouge_scores.items()})
     except ImportError:
         print("⚠️ Install rouge-score with: pip install rouge-score")
-        return {"rouge1": 0, "rouge2": 0, "rougeL": 0}
+        scores.update({"rouge1": 0, "rouge2": 0, "rougeL": 0})
+
+    # BERTScore
+    try:
+        from bert_score import score as bert_score_scorer
+        P, R, F1 = bert_score_scorer(predictions, references, lang="en", verbose=False, device=device)
+        scores["bert_score_f1"] = float(F1.mean() * 100)
+    except ImportError:
+        print("⚠️ Install bert-score with: pip install bert-score")
+        scores["bert_score_f1"] = 0
+        
+    return scores
 
 # -----------------------------------------------------------
 # 2. Summarization Model Evaluation
@@ -81,8 +95,8 @@ def evaluate_summarization_model(model_name="facebook/bart-large-cnn", num_sampl
             })
 
     # Compute Metrics
-    rouge_scores = compute_rouge(predictions, references) if predictions else {}
-    print(f"\nSummarization ROUGE Scores: {rouge_scores}")
+    metrics = compute_metrics(predictions, references, device=device) if predictions else {}
+    print(f"\nSummarization Metrics: {metrics}")
 
     # Print good examples
     print("\n" + "="*80)
@@ -96,7 +110,7 @@ def evaluate_summarization_model(model_name="facebook/bart-large-cnn", num_sampl
 
     return {
         "model": model_name,
-        "rouge": rouge_scores,
+        "metrics": metrics,
         "examples": examples,
         "good_examples": good_examples
     }
