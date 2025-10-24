@@ -2,3 +2,12 @@
 *.pkl
 *.safetensors
 *.pt
+__pycache__/
+env/
+venv/
+.idea/
+.vscode/
+.DS_Store
+logs/
+*.log
+results/
