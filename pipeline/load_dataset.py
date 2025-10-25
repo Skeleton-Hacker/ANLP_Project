@@ -107,10 +107,10 @@ def _load(
         doc = item['document'].copy()
         
         # Clean text fields in the document
-        if 'text' in doc:
-            doc['text'] = clean_text(doc['text'])
-        if 'summary' in doc:
-            doc['summary'] = clean_text(doc['summary'])
+        # if 'text' in doc:
+        #     doc['text'] = clean_text(doc['text'])
+        # if 'summary' in doc:
+        #     doc['summary'] = clean_text(doc['summary'])
         
         with lock:
             if story_id not in stories:
