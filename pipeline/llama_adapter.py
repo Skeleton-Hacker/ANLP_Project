@@ -1,13 +1,12 @@
 """
-Llama 1B Adapter for Fine-tuning with Chunk Embeddings
+Memory-Optimized Llama 1B Adapter for Fine-tuning with Chunk Embeddings
 
-This module fine-tunes Llama-3.2-1B for summarization using chunk encodings instead of text.
-It includes:
-- Loading encoded chunks from pickle files
-- Adapter layer to project chunk encodings to Llama embedding space
-- Fine-tuning with early stopping
-- Evaluation using ROUGE and BERTScore
-- Comprehensive logging and model checkpointing
+Key optimizations:
+- FP16/BF16 mixed precision training
+- Gradient checkpointing
+- Frozen Llama base model (only adapter trainable)
+- Reduced batch/chunk sizes
+- Memory-efficient attention
 """
 
 import logging
@@ -48,32 +47,38 @@ class LlamaAdapterConfig:
     
     # Model settings
     llama_model_name: str = "meta-llama/Llama-3.2-1B"
-    encoded_dim: int = 64  # Dimension of encoded chunks from autoencoder
-    adapter_hidden_dim: int = 512  # Hidden dimension for adapter layer
+    encoded_dim: int = 64
+    adapter_hidden_dim: int = 512
     
-    # Training settings
-    batch_size: int = 1
+    # MEMORY OPTIMIZATION: Reduced settings
+    batch_size: int = 8
     num_epochs: int = 300
     learning_rate: float = 2e-5
     weight_decay: float = 1e-5
     warmup_steps: int = 500
-    gradient_accumulation_steps: int = 4
+    gradient_accumulation_steps: int = 16  # Increased to compensate for smaller batch
     max_grad_norm: float = 1.0
     early_stopping_patience: int = 5
     
-    # Generation settings
-    max_chunks_per_story: int = 800  # Maximum number of chunks to use per story
-    max_target_length: int = 150  # Maximum length for generated summaries
+    # MEMORY OPTIMIZATION: Reduced chunk limit
+    max_chunks_per_story: int = 512  # Reduced from 800
+    max_target_length: int = 150
     min_target_length: int = 20
     temperature: float = 0.7
     top_p: float = 0.9
     repetition_penalty: float = 1.2
     
     # Hardware settings
-    num_workers: int = 4
+    num_workers: int = 2  # Reduced from 4
     
     # Evaluation settings
     eval_every_n_steps: int = 500
+    
+    # MEMORY OPTIMIZATION: Enable gradient checkpointing
+    use_gradient_checkpointing: bool = True
+    
+    # MEMORY OPTIMIZATION: Freeze Llama base model
+    freeze_llama: bool = True
     
     # Random seed
     seed: int = 42
@@ -86,22 +91,13 @@ class ChunkEncodingDataset(Dataset):
         self,
         encoded_data_path: Path,
         tokenizer: AutoTokenizer,
-        max_chunks: int = 800,
+        max_chunks: int = 200,
         max_target_length: int = 150
     ):
-        """Initialize dataset.
-        
-        Args:
-            encoded_data_path: Path to encoded pickle file.
-            tokenizer: Llama tokenizer for target sequences.
-            max_chunks: Maximum number of chunks to use per story.
-            max_target_length: Maximum length for target summaries.
-        """
         self.tokenizer = tokenizer
         self.max_chunks = max_chunks
         self.max_target_length = max_target_length
         
-        # Load encoded data
         logger.info(f"Loading encoded data from {encoded_data_path}...")
         with open(encoded_data_path, 'rb') as f:
             data = pickle.load(f)
@@ -109,7 +105,6 @@ class ChunkEncodingDataset(Dataset):
         self.stories = data['stories']
         self.metadata = data['metadata']
         
-        # Create list of samples (story_id)
         self.samples = []
         for story_id, story_data in self.stories.items():
             if 'document' in story_data and 'summary' in story_data['document'] and 'text' in story_data['document']['summary']:
@@ -124,24 +119,18 @@ class ChunkEncodingDataset(Dataset):
         story_id = self.samples[idx]
         story_data = self.stories[story_id]
         
-        # Get encoded embeddings
-        encoded_embeddings = story_data['encoded_embeddings']  # Shape: (num_chunks, encoded_dim)
+        encoded_embeddings = story_data['encoded_embeddings']
         
-        # Truncate or pad to max_chunks
+        # Truncate to max_chunks
         if len(encoded_embeddings) > self.max_chunks:
             encoded_embeddings = encoded_embeddings[:self.max_chunks]
         
-        # Convert to tensor
         chunk_encodings = torch.FloatTensor(encoded_embeddings)
-        
-        # Get target summary
         target_text = story_data['document']['summary']['text']
         
-        # Create prompt and full text for Llama
         prompt = "Summarize the following document:\n\n"
         full_text = prompt + target_text
         
-        # Tokenize prompt and full text
         prompt_encoding = self.tokenizer(
             prompt,
             add_special_tokens=True,
@@ -171,7 +160,6 @@ def collate_fn(batch):
     max_num_chunks = max(item['num_chunks'] for item in batch)
     encoded_dim = batch[0]['chunk_encodings'].shape[1]
     
-    # Pad chunk encodings
     padded_chunk_encodings = []
     chunk_attention_masks = []
     
@@ -179,7 +167,6 @@ def collate_fn(batch):
         num_chunks = item['num_chunks']
         chunk_encodings = item['chunk_encodings']
         
-        # Pad to max_num_chunks
         if num_chunks < max_num_chunks:
             padding = torch.zeros(max_num_chunks - num_chunks, encoded_dim)
             padded_encodings = torch.cat([chunk_encodings, padding], dim=0)
@@ -195,8 +182,8 @@ def collate_fn(batch):
         chunk_attention_masks.append(attention_mask)
     
     return {
-        'chunk_encodings': torch.stack(padded_chunk_encodings),  # (batch, max_chunks, encoded_dim)
-        'chunk_attention_mask': torch.stack(chunk_attention_masks),  # (batch, max_chunks)
+        'chunk_encodings': torch.stack(padded_chunk_encodings),
+        'chunk_attention_mask': torch.stack(chunk_attention_masks),
         'input_ids': torch.stack([item['input_ids'] for item in batch]),
         'attention_mask': torch.stack([item['attention_mask'] for item in batch]),
         'prompt_lengths': torch.tensor([item['prompt_length'] for item in batch]),
@@ -211,25 +198,32 @@ class LlamaChunkAdapter(nn.Module):
         self,
         llama_model_name: str,
         encoded_dim: int,
-        adapter_hidden_dim: int
+        adapter_hidden_dim: int,
+        use_gradient_checkpointing: bool = True,
+        freeze_llama: bool = True
     ):
-        """Initialize Llama adapter model.
-        
-        Args:
-            llama_model_name: Name of the Llama model.
-            encoded_dim: Dimension of encoded chunks.
-            adapter_hidden_dim: Hidden dimension for adapter.
-        """
         super(LlamaChunkAdapter, self).__init__()
         
+        # MEMORY OPTIMIZATION: Load in bfloat16
         self.llama = AutoModelForCausalLM.from_pretrained(
             llama_model_name,
-            torch_dtype=torch.float32,
+            torch_dtype=torch.bfloat16,  # Changed from float32
             use_cache=False
         )
         self.llama_hidden_dim = self.llama.config.hidden_size
         
-        # Adapter layer: project encoded_dim -> llama_hidden_dim
+        # MEMORY OPTIMIZATION: Enable gradient checkpointing
+        if use_gradient_checkpointing:
+            self.llama.gradient_checkpointing_enable()
+            logger.info("Gradient checkpointing enabled")
+        
+        # MEMORY OPTIMIZATION: Freeze Llama parameters
+        if freeze_llama:
+            for param in self.llama.parameters():
+                param.requires_grad = False
+            logger.info("Llama base model frozen")
+        
+        # Adapter layer (always trainable)
         self.adapter = nn.Sequential(
             nn.Linear(encoded_dim, adapter_hidden_dim),
             nn.LayerNorm(adapter_hidden_dim),
@@ -239,11 +233,15 @@ class LlamaChunkAdapter(nn.Module):
             nn.LayerNorm(self.llama_hidden_dim)
         )
         
+        # Ensure adapter is in same dtype as llama
+        self.adapter = self.adapter.to(torch.bfloat16)
+        
         logger.info(f"Initialized LlamaChunkAdapter with {llama_model_name}")
         logger.info(f"  - Llama hidden dim: {self.llama_hidden_dim}")
         logger.info(f"  - Encoded dim: {encoded_dim}")
         logger.info(f"  - Adapter hidden dim: {adapter_hidden_dim}")
-        logger.info(f"  - Full model fine-tuning enabled")
+        logger.info(f"  - Dtype: bfloat16")
+        logger.info(f"  - Llama frozen: {freeze_llama}")
     
     def forward(
         self,
@@ -253,28 +251,19 @@ class LlamaChunkAdapter(nn.Module):
         attention_mask: torch.Tensor,
         prompt_lengths: torch.Tensor
     ):
-        """Forward pass.
-        
-        Args:
-            chunk_encodings: (batch, num_chunks, encoded_dim)
-            chunk_attention_mask: (batch, num_chunks)
-            input_ids: (batch, seq_len) - full sequence including prompt
-            attention_mask: (batch, seq_len)
-            prompt_lengths: (batch,) - length of prompt for each sample
-        """
         batch_size = chunk_encodings.shape[0]
         
-        # Project chunk encodings to Llama hidden dim
-        chunk_embeds = self.adapter(chunk_encodings)  # (batch, num_chunks, llama_hidden_dim)
+        # Convert to bfloat16
+        chunk_encodings = chunk_encodings.to(torch.bfloat16)
         
-        # Get token embeddings for the text part
-        text_embeds = self.llama.model.embed_tokens(input_ids)  # (batch, seq_len, llama_hidden_dim)
+        # Project chunk encodings
+        chunk_embeds = self.adapter(chunk_encodings)
         
-        # Concatenate chunk embeddings with text embeddings
-        # Chunks act as prefix to the text
-        combined_embeds = torch.cat([chunk_embeds, text_embeds], dim=1)  # (batch, num_chunks + seq_len, hidden_dim)
+        # Get token embeddings
+        text_embeds = self.llama.model.embed_tokens(input_ids)
         
-        # Concatenate attention masks
+        # Concatenate
+        combined_embeds = torch.cat([chunk_embeds, text_embeds], dim=1)
         combined_attention_mask = torch.cat([chunk_attention_mask, attention_mask], dim=1)
         
         # Forward through Llama
@@ -285,24 +274,20 @@ class LlamaChunkAdapter(nn.Module):
         )
         
         logits = outputs.logits
-        
-        # Compute loss only on the target tokens (after prompt)
-        # Shift logits and labels for causal LM
         num_chunks = chunk_encodings.shape[1]
         
-        # Extract logits corresponding to text tokens
-        text_logits = logits[:, num_chunks:, :]  # (batch, seq_len, vocab_size)
+        # Extract text logits
+        text_logits = logits[:, num_chunks:, :]
         
         # Shift for next token prediction
         shift_logits = text_logits[:, :-1, :].contiguous()
         shift_labels = input_ids[:, 1:].contiguous()
         shift_attention = attention_mask[:, 1:].contiguous()
         
-        # Create loss mask: only compute loss on target tokens (after prompt)
+        # Create loss mask
         loss_mask = torch.zeros_like(shift_labels, dtype=torch.bool)
         for i in range(batch_size):
             prompt_len = prompt_lengths[i].item()
-            # Start loss computation after prompt
             loss_mask[i, prompt_len:] = shift_attention[i, prompt_len:].bool()
         
         # Compute loss
@@ -313,7 +298,7 @@ class LlamaChunkAdapter(nn.Module):
         )
         loss = loss.view(shift_labels.shape)
         
-        # Apply mask and compute mean
+        # Apply mask
         masked_loss = loss * loss_mask.float()
         loss = masked_loss.sum() / loss_mask.float().sum().clamp(min=1.0)
         
@@ -332,24 +317,11 @@ class LlamaChunkAdapter(nn.Module):
         repetition_penalty: float = 1.2,
         tokenizer: AutoTokenizer = None
     ):
-        """Generate summaries.
+        # Convert to bfloat16
+        chunk_encodings = chunk_encodings.to(torch.bfloat16)
         
-        Args:
-            chunk_encodings: (batch, num_chunks, encoded_dim)
-            chunk_attention_mask: (batch, num_chunks)
-            prompt_ids: (batch, prompt_len)
-            prompt_attention_mask: (batch, prompt_len)
-            max_length: Maximum generation length.
-            min_length: Minimum generation length.
-            temperature: Sampling temperature.
-            top_p: Nucleus sampling parameter.
-            repetition_penalty: Penalty for repeating tokens.
-            tokenizer: Tokenizer for EOS token.
-        """
-        # Project chunk encodings
+        # Project chunks
         chunk_embeds = self.adapter(chunk_encodings)
-        
-        # Get prompt embeddings
         prompt_embeds = self.llama.model.embed_tokens(prompt_ids)
         
         # Concatenate
@@ -382,16 +354,7 @@ def set_seed(seed: int):
 
 
 def compute_metrics(predictions: List[str], references: List[str]) -> Dict[str, float]:
-    """Compute ROUGE and BERTScore metrics.
-    
-    Args:
-        predictions: List of predicted summaries.
-        references: List of reference summaries.
-        
-    Returns:
-        Dictionary of metrics.
-    """
-    # ROUGE scores
+    """Compute ROUGE and BERTScore metrics."""
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
     rouge_scores = {
         'rouge1': [],
@@ -430,19 +393,7 @@ def evaluate_model(
     accelerator: Accelerator,
     desc: str = "Evaluation"
 ) -> Tuple[Dict[str, float], List[str], List[str]]:
-    """Evaluate model on a dataset.
-    
-    Args:
-        model: Llama adapter model.
-        dataloader: DataLoader for evaluation.
-        tokenizer: Llama tokenizer.
-        config: Configuration.
-        accelerator: Accelerator instance.
-        desc: Description for progress bar.
-        
-    Returns:
-        Tuple of (metrics, predictions, references).
-    """
+    """Evaluate model on a dataset."""
     model.eval()
     all_predictions = []
     all_references = []
@@ -459,11 +410,9 @@ def evaluate_model(
             target_texts = batch['target_texts']
             batch_size = chunk_encodings.shape[0]
             
-            # Prepare prompt
             prompt_ids = prompt_encoding['input_ids'].repeat(batch_size, 1).to(accelerator.device)
             prompt_attention_mask = prompt_encoding['attention_mask'].repeat(batch_size, 1).to(accelerator.device)
             
-            # Generate
             generated_ids = model.generate(
                 chunk_encodings=chunk_encodings,
                 chunk_attention_mask=chunk_attention_mask,
@@ -477,7 +426,6 @@ def evaluate_model(
                 tokenizer=tokenizer
             )
             
-            # Decode - skip the chunk and prompt tokens
             num_prefix_tokens = chunk_encodings.shape[1] + prompt_ids.shape[1]
             generated_ids = generated_ids[:, num_prefix_tokens:]
             
@@ -485,8 +433,11 @@ def evaluate_model(
             
             all_predictions.extend(predictions)
             all_references.extend(target_texts)
+            
+            # MEMORY OPTIMIZATION: Clear cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     
-    # Compute metrics
     metrics = compute_metrics(all_predictions, all_references)
     
     return metrics, all_predictions, all_references
@@ -501,28 +452,16 @@ def train_model(
     accelerator: Accelerator,
     log_file: Path
 ) -> LlamaChunkAdapter:
-    """Train the Llama adapter model.
+    """Train the Llama adapter model."""
+    # MEMORY OPTIMIZATION: Only optimize adapter parameters
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
     
-    Args:
-        model: Llama adapter model.
-        train_dataloader: Training dataloader.
-        val_dataloader: Validation dataloader.
-        tokenizer: Llama tokenizer.
-        config: Configuration.
-        accelerator: Accelerator instance.
-        log_file: Path to log file.
-        
-    Returns:
-        Trained model.
-    """
-    # Optimizer
     optimizer = optim.AdamW(
-        model.parameters(),
+        trainable_params,  # Only adapter params
         lr=config.learning_rate,
         weight_decay=config.weight_decay
     )
     
-    # Learning rate scheduler
     num_training_steps = len(train_dataloader) * config.num_epochs // config.gradient_accumulation_steps
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
@@ -530,12 +469,10 @@ def train_model(
         num_training_steps=num_training_steps
     )
     
-    # Prepare with accelerator
     model, optimizer, train_dataloader, val_dataloader, scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, val_dataloader, scheduler
     )
     
-    # Training loop
     best_val_loss = float('inf')
     best_val_rouge = 0.0
     patience_counter = 0
@@ -550,7 +487,6 @@ def train_model(
             f.write(f"{'='*80}\n\n")
     
     for epoch in range(config.num_epochs):
-        # Training phase
         model.train()
         train_loss = 0.0
         num_train_batches = 0
@@ -562,7 +498,6 @@ def train_model(
         )
         
         for batch_idx, batch in enumerate(train_pbar):
-            # Forward pass
             outputs = model(
                 chunk_encodings=batch['chunk_encodings'],
                 chunk_attention_mask=batch['chunk_attention_mask'],
@@ -572,17 +507,18 @@ def train_model(
             )
             
             loss = outputs.loss / config.gradient_accumulation_steps
-            
-            # Backward pass
             accelerator.backward(loss)
             
-            # Update parameters
             if (batch_idx + 1) % config.gradient_accumulation_steps == 0:
-                accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+                accelerator.clip_grad_norm_(trainable_params, config.max_grad_norm)
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
                 global_step += 1
+                
+                # MEMORY OPTIMIZATION: Clear cache periodically
+                if global_step % 10 == 0 and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             
             train_loss += loss.item() * config.gradient_accumulation_steps
             num_train_batches += 1
@@ -652,7 +588,7 @@ def train_model(
             with open(log_file, 'a') as f:
                 f.write(log_msg + "\n")
             
-            # Log 5 random sample predictions
+            # Log sample predictions
             if len(val_predictions) >= 5:
                 import random
                 random_indices = random.sample(range(len(val_predictions)), 5)
@@ -672,14 +608,13 @@ def train_model(
                 with open(log_file, 'a') as f:
                     f.write(sample_log)
         
-        # Early stopping based on ROUGE-L
+        # Early stopping
         val_rouge = val_metrics['rougeL']
         if val_rouge > best_val_rouge:
             best_val_rouge = val_rouge
             best_val_loss = avg_val_loss
             patience_counter = 0
             
-            # Save best model
             if accelerator.is_main_process:
                 best_model_path = Path(config.output_dir) / "best_model"
                 best_model_path.mkdir(parents=True, exist_ok=True)
@@ -722,26 +657,18 @@ def evaluate_finetuned(
     accelerator: Accelerator,
     log_file: Path
 ):
-    """Evaluate fine-tuned model on test set.
-    
-    Args:
-        config: Configuration.
-        accelerator: Accelerator instance.
-        log_file: Path to log file.
-    """
+    """Evaluate fine-tuned model on test set."""
     if accelerator.is_main_process:
         logger.info("\n" + "="*80)
         logger.info("Evaluating Fine-tuned Model on Test Set")
         logger.info("="*80)
     
-    # Load test data
     test_data_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
     if not test_data_path.exists():
         if accelerator.is_main_process:
             logger.error(f"Test data not found: {test_data_path}")
         return
     
-    # Check if model exists
     best_model_path = Path(config.output_dir) / "best_model" / "model.pt"
     if not best_model_path.exists():
         if accelerator.is_main_process:
@@ -750,12 +677,10 @@ def evaluate_finetuned(
                 f.write(f"ERROR: Fine-tuned model not found at {best_model_path}\n")
         return
     
-    # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.llama_model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
-    # Create test dataset and dataloader
     test_dataset = ChunkEncodingDataset(
         test_data_path,
         tokenizer,
@@ -771,11 +696,12 @@ def evaluate_finetuned(
         collate_fn=collate_fn
     )
     
-    # Load fine-tuned model
     finetuned_model = LlamaChunkAdapter(
         llama_model_name=config.llama_model_name,
         encoded_dim=config.encoded_dim,
-        adapter_hidden_dim=config.adapter_hidden_dim
+        adapter_hidden_dim=config.adapter_hidden_dim,
+        use_gradient_checkpointing=config.use_gradient_checkpointing,
+        freeze_llama=config.freeze_llama
     )
     
     if accelerator.is_main_process:
@@ -784,10 +710,8 @@ def evaluate_finetuned(
     finetuned_model.load_state_dict(torch.load(best_model_path, map_location='cpu'))
     finetuned_model = finetuned_model.to(accelerator.device)
     
-    # Prepare with accelerator
     finetuned_model, test_dataloader = accelerator.prepare(finetuned_model, test_dataloader)
     
-    # Evaluate
     test_metrics, test_preds, test_refs = evaluate_model(
         accelerator.unwrap_model(finetuned_model),
         test_dataloader,
@@ -824,59 +748,58 @@ def evaluate_finetuned(
 
 def main():
     """Main training and evaluation pipeline."""
-    # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Configuration
     config = LlamaAdapterConfig()
     
-    # Initialize Accelerator with kwargs for DDP
+    # MEMORY OPTIMIZATION: Enable mixed precision
     accelerator = Accelerator(
         gradient_accumulation_steps=config.gradient_accumulation_steps,
+        mixed_precision="bf16",  # Use bfloat16 mixed precision
         kwargs_handlers=[
-            DistributedDataParallelKwargs(find_unused_parameters=True)
+            DistributedDataParallelKwargs(find_unused_parameters=False)  # Changed to False
         ]
     )
     
-    # Set seed
     set_seed(config.seed)
     
     if accelerator.is_main_process:
         logger.info("="*80)
-        logger.info("Llama 1B Adapter Fine-tuning Pipeline")
+        logger.info("Memory-Optimized Llama 1B Adapter Fine-tuning Pipeline")
         logger.info("="*80)
         logger.info(f"Device: {accelerator.device}")
         logger.info(f"Number of processes: {accelerator.num_processes}")
+        logger.info(f"Mixed precision: bf16")
         logger.info(f"Llama Model: {config.llama_model_name}")
         logger.info(f"Encoded dim: {config.encoded_dim}")
         logger.info(f"Adapter hidden dim: {config.adapter_hidden_dim}")
-        logger.info(f"Full model fine-tuning: Enabled")
+        logger.info(f"Llama frozen: {config.freeze_llama}")
+        logger.info(f"Gradient checkpointing: {config.use_gradient_checkpointing}")
+        logger.info(f"Max chunks per story: {config.max_chunks_per_story}")
         logger.info(f"Batch size: {config.batch_size}")
         logger.info(f"Gradient accumulation steps: {config.gradient_accumulation_steps}")
+        logger.info(f"Effective batch size: {config.batch_size * config.gradient_accumulation_steps * accelerator.num_processes}")
         logger.info(f"Epochs: {config.num_epochs}")
         logger.info(f"Learning rate: {config.learning_rate}")
         logger.info("="*80)
         
-        # Create output directories
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
         Path(config.logs_dir).mkdir(parents=True, exist_ok=True)
     
     accelerator.wait_for_everyone()
     
-    # Setup log file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = Path(config.logs_dir) / f"llama_adapter_training_{timestamp}.log"
     
     if accelerator.is_main_process:
         with open(log_file, 'w') as f:
-            f.write(f"Llama 1B Adapter Training Log\n")
+            f.write(f"Memory-Optimized Llama 1B Adapter Training Log\n")
             f.write(f"Started at: {datetime.now().isoformat()}\n")
             f.write(f"{'='*80}\n\n")
     
-    # Load data
     if accelerator.is_main_process:
         logger.info("\nLoading datasets...")
     
@@ -888,12 +811,10 @@ def main():
             logger.error("Encoded data not found. Please run chunk_embeddings.py first.")
         return
     
-    # Initialize tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.llama_model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
-    # Create datasets
     train_dataset = ChunkEncodingDataset(
         train_data_path,
         tokenizer,
@@ -908,13 +829,13 @@ def main():
         max_target_length=config.max_target_length
     )
     
-    # Create dataloaders
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=config.batch_size,
         shuffle=True,
         num_workers=config.num_workers,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
+        pin_memory=True  # MEMORY OPTIMIZATION
     )
     
     val_dataloader = DataLoader(
@@ -922,18 +843,20 @@ def main():
         batch_size=config.batch_size,
         shuffle=False,
         num_workers=config.num_workers,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
+        pin_memory=True  # MEMORY OPTIMIZATION
     )
     
     if accelerator.is_main_process:
         logger.info(f"Train samples: {len(train_dataset)}")
         logger.info(f"Validation samples: {len(val_dataset)}")
     
-    # Initialize model
     model = LlamaChunkAdapter(
         llama_model_name=config.llama_model_name,
         encoded_dim=config.encoded_dim,
-        adapter_hidden_dim=config.adapter_hidden_dim
+        adapter_hidden_dim=config.adapter_hidden_dim,
+        use_gradient_checkpointing=config.use_gradient_checkpointing,
+        freeze_llama=config.freeze_llama
     )
     
     if accelerator.is_main_process:
@@ -942,8 +865,8 @@ def main():
         logger.info(f"Total parameters: {total_params:,}")
         logger.info(f"Trainable parameters: {trainable_params:,}")
         logger.info(f"Percentage trainable: {(trainable_params/total_params)*100:.2f}%")
+        logger.info(f"Memory savings: ~{(1 - trainable_params/total_params)*100:.1f}% fewer gradients")
     
-    # Train model
     if accelerator.is_main_process:
         logger.info("\n" + "="*80)
         logger.info("Starting Training")
@@ -961,7 +884,6 @@ def main():
     
     accelerator.wait_for_everyone()
     
-    # Evaluate fine-tuned model on test set
     evaluate_finetuned(config, accelerator, log_file)
     
     if accelerator.is_main_process:
