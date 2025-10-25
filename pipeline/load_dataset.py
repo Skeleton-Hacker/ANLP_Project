@@ -108,11 +108,11 @@ def _load(
         a = clean_text(item['answers'][0]['text']) if item['answers'] and len(item['answers']) > 0 else item['answers']
         doc = item['document'].copy()
         
-        # Clean text fields in the document
+        # Commenting out since it takes too much time to process the entire dataset
         # if 'text' in doc:
         #     doc['text'] = clean_text(doc['text'])
-        # if 'summary' in doc:
-        #     doc['summary'] = clean_text(doc['summary'])
+        # if 'summary' in doc and isinstance(doc['summary'], dict) and 'text' in doc['summary']:
+        #     doc['summary']['text'] = clean_text(doc['summary']['text'])
         
         with lock:
             if story_id not in stories:
