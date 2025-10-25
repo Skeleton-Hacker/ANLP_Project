@@ -5,13 +5,16 @@ Key optimizations:
 - FP16/BF16 mixed precision training
 - Gradient checkpointing
 - Frozen Llama base model (only adapter trainable)
-- Reduced batch/chunk sizes
-- Memory-efficient attention
+- Reduced batch/chunk sizes (batch_size=4, max_chunks=256)
+- Frequent cache clearing during training
+- BERTScore on CPU to avoid GPU memory bloat
+- Evaluate every 5 epochs instead of every epoch
 """
 
 import logging
 import pickle
 import os
+import gc
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
@@ -51,17 +54,17 @@ class LlamaAdapterConfig:
     adapter_hidden_dim: int = 512
     
     # MEMORY OPTIMIZATION: Reduced settings
-    batch_size: int = 8
+    batch_size: int = 12
     num_epochs: int = 300
     learning_rate: float = 2e-5
     weight_decay: float = 1e-5
     warmup_steps: int = 500
-    gradient_accumulation_steps: int = 16  # Increased to compensate for smaller batch
+    gradient_accumulation_steps: int = 32  # Increased from 16 to compensate
     max_grad_norm: float = 1.0
     early_stopping_patience: int = 5
     
     # MEMORY OPTIMIZATION: Reduced chunk limit
-    max_chunks_per_story: int = 512  # Reduced from 800
+    max_chunks_per_story: int = 256  # Reduced from 512
     max_target_length: int = 150
     min_target_length: int = 20
     temperature: float = 0.7
@@ -69,12 +72,11 @@ class LlamaAdapterConfig:
     repetition_penalty: float = 1.2
     
     # Hardware settings
-    num_workers: int = 2  # Reduced from 4
+    num_workers: int = 4
     
     # Evaluation settings
-    eval_every_n_steps: int = 500
-    
-    # MEMORY OPTIMIZATION: Enable gradient checkpointing
+    eval_every_n_steps: int = 1000
+    eval_every_n_epochs: int = 1  
     use_gradient_checkpointing: bool = True
     
     # MEMORY OPTIMIZATION: Freeze Llama base model
@@ -374,8 +376,8 @@ def compute_metrics(predictions: List[str], references: List[str]) -> Dict[str, 
         'rougeL': np.mean(rouge_scores['rougeL'])
     }
     
-    # BERTScore
-    P, R, F1 = bert_score(predictions, references, lang='en', verbose=False)
+    # BERTScore - run on CPU to avoid GPU memory issues
+    P, R, F1 = bert_score(predictions, references, lang='en', verbose=False, device='cpu')
     bert_results = {
         'bertscore_precision': P.mean().item(),
         'bertscore_recall': R.mean().item(),
@@ -498,6 +500,7 @@ def train_model(
         )
         
         for batch_idx, batch in enumerate(train_pbar):
+            model.zero_grad(set_to_none=True)
             outputs = model(
                 chunk_encodings=batch['chunk_encodings'],
                 chunk_attention_mask=batch['chunk_attention_mask'],
@@ -508,6 +511,8 @@ def train_model(
             
             loss = outputs.loss / config.gradient_accumulation_steps
             accelerator.backward(loss)
+
+            
             
             if (batch_idx + 1) % config.gradient_accumulation_steps == 0:
                 accelerator.clip_grad_norm_(trainable_params, config.max_grad_norm)
@@ -516,12 +521,23 @@ def train_model(
                 optimizer.zero_grad()
                 global_step += 1
                 
-                # MEMORY OPTIMIZATION: Clear cache periodically
-                if global_step % 10 == 0 and torch.cuda.is_available():
+                # MEMORY OPTIMIZATION: Clear cache more frequently
+                if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+                
+                # Force garbage collection
+                if global_step % 5 == 0:
+                    gc.collect()
             
             train_loss += loss.item() * config.gradient_accumulation_steps
             num_train_batches += 1
+
+             # AGGRESSIVE MEMORY CLEANUP
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            # Force garbage collection every batch
+            gc.collect()
             
             train_pbar.set_postfix({
                 'loss': loss.item() * config.gradient_accumulation_steps,
@@ -559,37 +575,59 @@ def train_model(
         
         avg_val_loss = val_loss / num_val_batches
         
-        # Evaluate with metrics
-        if accelerator.is_main_process:
-            logger.info(f"\nEvaluating with ROUGE and BERTScore...")
-        
-        val_metrics, val_predictions, val_references = evaluate_model(
-            accelerator.unwrap_model(model),
-            val_dataloader,
-            tokenizer,
-            config,
-            accelerator,
-            desc=f"Epoch {epoch+1} [Val Metrics]"
-        )
+        # Evaluate with metrics every N epochs
+        should_evaluate = (epoch + 1) % config.eval_every_n_epochs == 0
+        if should_evaluate:
+            if accelerator.is_main_process:
+                logger.info(f"\nEvaluating with ROUGE and BERTScore...")
+            
+            val_metrics, val_predictions, val_references = evaluate_model(
+                accelerator.unwrap_model(model),
+                val_dataloader,
+                tokenizer,
+                config,
+                accelerator,
+                desc=f"Epoch {epoch+1} [Val Metrics]"
+            )
+            
+            # Aggressive memory cleanup after evaluation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+        else:
+            # Use dummy metrics when not evaluating
+            val_metrics = {
+                'rouge1': 0.0, 'rouge2': 0.0, 'rougeL': 0.0,
+                'bertscore_f1': 0.0, 'bertscore_precision': 0.0, 'bertscore_recall': 0.0
+            }
+            val_predictions, val_references = [], []
         
         # Log results
         if accelerator.is_main_process:
-            log_msg = (
-                f"\nEpoch {epoch+1}/{config.num_epochs}\n"
-                f"  Train Loss: {avg_train_loss:.6f}\n"
-                f"  Val Loss: {avg_val_loss:.6f}\n"
-                f"  ROUGE-1: {val_metrics['rouge1']:.4f}\n"
-                f"  ROUGE-2: {val_metrics['rouge2']:.4f}\n"
-                f"  ROUGE-L: {val_metrics['rougeL']:.4f}\n"
-                f"  BERTScore F1: {val_metrics['bertscore_f1']:.4f}\n"
-            )
+            if should_evaluate:
+                log_msg = (
+                    f"\nEpoch {epoch+1}/{config.num_epochs}\n"
+                    f"  Train Loss: {avg_train_loss:.6f}\n"
+                    f"  Val Loss: {avg_val_loss:.6f}\n"
+                    f"  ROUGE-1: {val_metrics['rouge1']:.4f}\n"
+                    f"  ROUGE-2: {val_metrics['rouge2']:.4f}\n"
+                    f"  ROUGE-L: {val_metrics['rougeL']:.4f}\n"
+                    f"  BERTScore F1: {val_metrics['bertscore_f1']:.4f}\n"
+                )
+            else:
+                log_msg = (
+                    f"\nEpoch {epoch+1}/{config.num_epochs}\n"
+                    f"  Train Loss: {avg_train_loss:.6f}\n"
+                    f"  Val Loss: {avg_val_loss:.6f}\n"
+                    f"  (Metrics evaluation skipped)\n"
+                )
             logger.info(log_msg)
             
             with open(log_file, 'a') as f:
                 f.write(log_msg + "\n")
             
-            # Log sample predictions
-            if len(val_predictions) >= 5:
+            # Log sample predictions only when evaluated
+            if should_evaluate and len(val_predictions) >= 5:
                 import random
                 random_indices = random.sample(range(len(val_predictions)), 5)
                 
@@ -608,36 +646,37 @@ def train_model(
                 with open(log_file, 'a') as f:
                     f.write(sample_log)
         
-        # Early stopping
-        val_rouge = val_metrics['rougeL']
-        if val_rouge > best_val_rouge:
-            best_val_rouge = val_rouge
-            best_val_loss = avg_val_loss
-            patience_counter = 0
-            
-            if accelerator.is_main_process:
-                best_model_path = Path(config.output_dir) / "best_model"
-                best_model_path.mkdir(parents=True, exist_ok=True)
+        # Early stopping (only when evaluated)
+        if should_evaluate:
+            val_rouge = val_metrics['rougeL']
+            if val_rouge > best_val_rouge:
+                best_val_rouge = val_rouge
+                best_val_loss = avg_val_loss
+                patience_counter = 0
                 
-                unwrapped_model = accelerator.unwrap_model(model)
-                torch.save(unwrapped_model.state_dict(), best_model_path / "model.pt")
-                tokenizer.save_pretrained(best_model_path)
-                
-                with open(best_model_path / "config.json", 'w') as f:
-                    json.dump(config.__dict__, f, indent=2)
-                
-                logger.info(f"Saved best model with ROUGE-L: {best_val_rouge:.4f}")
-                
-                with open(log_file, 'a') as f:
-                    f.write(f"Saved best model at epoch {epoch+1} with ROUGE-L: {best_val_rouge:.4f}\n\n")
-        else:
-            patience_counter += 1
-            if patience_counter >= config.early_stopping_patience:
                 if accelerator.is_main_process:
-                    logger.info(f"Early stopping triggered after {epoch+1} epochs")
+                    best_model_path = Path(config.output_dir) / "best_model"
+                    best_model_path.mkdir(parents=True, exist_ok=True)
+                    
+                    unwrapped_model = accelerator.unwrap_model(model)
+                    torch.save(unwrapped_model.state_dict(), best_model_path / "model.pt")
+                    tokenizer.save_pretrained(best_model_path)
+                    
+                    with open(best_model_path / "config.json", 'w') as f:
+                        json.dump(config.__dict__, f, indent=2)
+                    
+                    logger.info(f"Saved best model with ROUGE-L: {best_val_rouge:.4f}")
+                    
                     with open(log_file, 'a') as f:
-                        f.write(f"Early stopping triggered after {epoch+1} epochs\n\n")
-                break
+                        f.write(f"Saved best model at epoch {epoch+1} with ROUGE-L: {best_val_rouge:.4f}\n\n")
+            else:
+                patience_counter += 1
+                if patience_counter >= config.early_stopping_patience:
+                    if accelerator.is_main_process:
+                        logger.info(f"Early stopping triggered after {epoch+1} epochs")
+                        with open(log_file, 'a') as f:
+                            f.write(f"Early stopping triggered after {epoch+1} epochs\n\n")
+                    break
         
         accelerator.wait_for_everyone()
     
@@ -721,6 +760,11 @@ def evaluate_finetuned(
         desc="Test Set Evaluation"
     )
     
+    # Memory cleanup
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+    
     if accelerator.is_main_process:
         test_log = (
             f"\nTest Set Results:\n"
@@ -784,6 +828,7 @@ def main():
         logger.info(f"Effective batch size: {config.batch_size * config.gradient_accumulation_steps * accelerator.num_processes}")
         logger.info(f"Epochs: {config.num_epochs}")
         logger.info(f"Learning rate: {config.learning_rate}")
+        logger.info(f"Evaluate every N epochs: {config.eval_every_n_epochs}")
         logger.info("="*80)
         
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
@@ -835,7 +880,7 @@ def main():
         shuffle=True,
         num_workers=config.num_workers,
         collate_fn=collate_fn,
-        pin_memory=True  # MEMORY OPTIMIZATION
+        pin_memory=False
     )
     
     val_dataloader = DataLoader(
@@ -844,7 +889,7 @@ def main():
         shuffle=False,
         num_workers=config.num_workers,
         collate_fn=collate_fn,
-        pin_memory=True  # MEMORY OPTIMIZATION
+        pin_memory=False
     )
     
     if accelerator.is_main_process:

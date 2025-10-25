@@ -11,3 +11,4 @@ venv/
 logs/
 *.log
 results/
+models/
