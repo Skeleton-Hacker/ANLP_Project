@@ -1,11 +1,42 @@
 from typing import Optional, Union, Dict, Any
 import logging
+import re
 
 
 from datasets import load_dataset, Dataset
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 
 logger = logging.getLogger(__name__)
+
+
+def clean_text(s: str) -> str:
+    """Clean text by removing BOMs, normalizing whitespace, and handling special characters.
+    
+    Args:
+        s: Input string to clean
+        
+    Returns:
+        Cleaned string with normalized whitespace
+    """
+    if not isinstance(s, str):
+        return s
+    
+    # Remove Unicode BOM and common mis-decoded BOM sequences
+    s = s.replace('\ufeff', '')
+    s = s.replace('ï»¿', '')
+    
+    # Normalize line breaks to spaces and remove carriage returns
+    s = s.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
+    
+    # Replace underscores with spaces (user requested handling)
+    s = s.replace('_', ' ')
+    
+    # Collapse multiple whitespace into single space and strip
+    s = re.sub(r"\s+", ' ', s).strip()
+    
+    return s
 
 
 def _load(
@@ -64,18 +95,37 @@ def _load(
     if not group_by_story:
         return ds
 
-    # Group by story/document id
+    # Group by story/document id (multithreaded)
+
     stories: Dict[str, Any] = {}
-    for item in ds:
+    lock = threading.Lock()
+
+    def _process(item):
         story_id = item['document']['id']
-        if story_id not in stories:
-            stories[story_id] = {
-                'document': item['document'],
-                'questions': [],
-                'answers': []
-            }
-        stories[story_id]['questions'].append(item['question'])
-        stories[story_id]['answers'].append(item['answers'])
+        q = clean_text(item['question'])
+        a = clean_text(item['answers'][0]['text']) if item['answers'] and len(item['answers']) > 0 else item['answers']
+        doc = item['document'].copy()
+        
+        # Clean text fields in the document
+        if 'text' in doc:
+            doc['text'] = clean_text(doc['text'])
+        if 'summary' in doc:
+            doc['summary'] = clean_text(doc['summary'])
+        
+        with lock:
+            if story_id not in stories:
+                stories[story_id] = {
+                    'document': doc,
+                    'questions': [],
+                    'answers': []
+                }
+            stories[story_id]['questions'].append(q)
+            stories[story_id]['answers'].append(a)
+
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(_process, item) for item in ds]
+        for f in as_completed(futures):
+            f.result()
 
     logger.info("Total stories after restructuring: %d", len(stories))
     return stories
