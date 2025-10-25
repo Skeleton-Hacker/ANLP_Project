@@ -6,6 +6,7 @@ import re
 from datasets import load_dataset, Dataset
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from tqdm import tqdm
 
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ def _load(
         return ds
 
     # Group by story/document id (multithreaded)
+    logger.info("Restructuring dataset by story ID and cleaning text...")
 
     stories: Dict[str, Any] = {}
     lock = threading.Lock()
@@ -124,8 +126,15 @@ def _load(
 
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(_process, item) for item in ds]
-        for f in as_completed(futures):
-            f.result()
+        
+        # Use tqdm to show progress
+        with tqdm(total=len(futures), desc=f"Processing {split} examples", unit="ex") as pbar:
+            for f in as_completed(futures):
+                try:
+                    f.result()
+                except Exception as e:
+                    logger.error(f"Error processing item: {e}")
+                pbar.update(1)
 
     logger.info("Total stories after restructuring: %d", len(stories))
     return stories
