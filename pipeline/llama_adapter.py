@@ -34,6 +34,7 @@ from tqdm import tqdm
 import json
 from rouge_score import rouge_scorer
 from bert_score import score as bert_score
+import argparse
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ class LlamaAdapterConfig:
     # MEMORY OPTIMIZATION: Reduced settings
     batch_size: int = 12
     num_epochs: int = 300
-    learning_rate: float = 2e-5
+    learning_rate: float = 1e-6
     weight_decay: float = 1e-5
     warmup_steps: int = 500
     gradient_accumulation_steps: int = 32  # Increased from 16 to compensate
@@ -64,10 +65,10 @@ class LlamaAdapterConfig:
     early_stopping_patience: int = 5
     
     # MEMORY OPTIMIZATION: Reduced chunk limit
-    max_chunks_per_story: int = 256  # Reduced from 512
+    max_chunks_per_story: int = 300
     max_target_length: int = 150
     min_target_length: int = 20
-    temperature: float = 0.7
+    temperature: float = 0.2
     top_p: float = 0.9
     repetition_penalty: float = 1.2
     
@@ -84,6 +85,10 @@ class LlamaAdapterConfig:
     
     # Random seed
     seed: int = 42
+    # Generation: use beam search by default to improve coherence
+    num_beams: int = 3
+    # Enable verbose debugging prints/checks during training (optional)
+    debug: bool = False
 
 
 class ChunkEncodingDataset(Dataset):
@@ -127,7 +132,8 @@ class ChunkEncodingDataset(Dataset):
         if len(encoded_embeddings) > self.max_chunks:
             encoded_embeddings = encoded_embeddings[:self.max_chunks]
         
-        chunk_encodings = torch.FloatTensor(encoded_embeddings)
+        # Convert to bfloat16 to match adapter/model dtype and avoid matmul dtype errors
+        chunk_encodings = torch.FloatTensor(encoded_embeddings).to(torch.bfloat16)
         target_text = story_data['document']['summary']['text']
         
         prompt = "Summarize the following document:\n\n"
@@ -153,7 +159,8 @@ class ChunkEncodingDataset(Dataset):
             'input_ids': full_encoding['input_ids'].squeeze(0),
             'attention_mask': full_encoding['attention_mask'].squeeze(0),
             'prompt_length': len(prompt_encoding['input_ids'][0]),
-            'target_text': target_text
+            'target_text': target_text,
+            'document_text': ' '.join(story_data['chunks'])
         }
 
 
@@ -189,7 +196,8 @@ def collate_fn(batch):
         'input_ids': torch.stack([item['input_ids'] for item in batch]),
         'attention_mask': torch.stack([item['attention_mask'] for item in batch]),
         'prompt_lengths': torch.tensor([item['prompt_length'] for item in batch]),
-        'target_texts': [item['target_text'] for item in batch]
+        'target_texts': [item['target_text'] for item in batch],
+        'document_texts': [item['document_text'] for item in batch]
     }
 
 
@@ -286,11 +294,14 @@ class LlamaChunkAdapter(nn.Module):
         shift_labels = input_ids[:, 1:].contiguous()
         shift_attention = attention_mask[:, 1:].contiguous()
         
-        # Create loss mask
-        loss_mask = torch.zeros_like(shift_labels, dtype=torch.bool)
-        for i in range(batch_size):
-            prompt_len = prompt_lengths[i].item()
-            loss_mask[i, prompt_len:] = shift_attention[i, prompt_len:].bool()
+        # Create loss mask (vectorized)
+        # shift_labels correspond to original token positions 1..seq_len-1
+        seq_len = shift_labels.size(1)
+        # positions (0..seq_len-1) correspond to original positions (1..seq_len)
+        pos_ids = torch.arange(seq_len, device=prompt_lengths.device).unsqueeze(0)
+        # prompt_lengths has original token counts; include label positions where (pos+1) >= prompt_len
+        prompt_lens = prompt_lengths.unsqueeze(1)
+        loss_mask = shift_attention.bool() & ((pos_ids + 1) >= prompt_lens)
         
         # Compute loss
         loss_fct = nn.CrossEntropyLoss(reduction='none')
@@ -314,9 +325,10 @@ class LlamaChunkAdapter(nn.Module):
         prompt_attention_mask: torch.Tensor,
         max_length: int = 150,
         min_length: int = 20,
-        temperature: float = 0.7,
-        top_p: float = 0.9,
-        repetition_penalty: float = 1.2,
+        temperature: float = 0.3,
+        top_p: float = 0.85,
+        repetition_penalty: float = 1.1,
+        num_beams: int = 3,
         tokenizer: AutoTokenizer = None
     ):
         # Convert to bfloat16
@@ -330,7 +342,9 @@ class LlamaChunkAdapter(nn.Module):
         combined_embeds = torch.cat([chunk_embeds, prompt_embeds], dim=1)
         combined_attention_mask = torch.cat([chunk_attention_mask, prompt_attention_mask], dim=1)
         
-        # Generate
+        # Determine sampling vs beam search: if num_beams > 1 use beam search (deterministic)
+        do_sample_flag = True if num_beams == 1 else False
+
         outputs = self.llama.generate(
             inputs_embeds=combined_embeds,
             attention_mask=combined_attention_mask,
@@ -339,7 +353,8 @@ class LlamaChunkAdapter(nn.Module):
             temperature=temperature,
             top_p=top_p,
             repetition_penalty=repetition_penalty,
-            do_sample=True,
+            do_sample=do_sample_flag,
+            num_beams=num_beams,
             pad_token_id=tokenizer.pad_token_id if tokenizer else None,
             eos_token_id=tokenizer.eos_token_id if tokenizer else None,
             use_cache=True
@@ -376,8 +391,9 @@ def compute_metrics(predictions: List[str], references: List[str]) -> Dict[str, 
         'rougeL': np.mean(rouge_scores['rougeL'])
     }
     
-    # BERTScore - run on CPU to avoid GPU memory issues
-    P, R, F1 = bert_score(predictions, references, lang='en', verbose=False, device='cpu')
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    P, R, F1 = bert_score(predictions, references, lang='en', verbose=False, device=device)
     bert_results = {
         'bertscore_precision': P.mean().item(),
         'bertscore_recall': R.mean().item(),
@@ -385,6 +401,58 @@ def compute_metrics(predictions: List[str], references: List[str]) -> Dict[str, 
     }
     
     return {**rouge_results, **bert_results}
+
+
+def debug_data_sample(batch: Dict[str, Any], tokenizer: AutoTokenizer):
+    """Print a compact debug view of a batch to verify tokenization and targets."""
+    try:
+        logger.info("--- DEBUG DATA SAMPLE ---")
+        logger.info(f"Chunk encodings shape: {batch['chunk_encodings'].shape}")
+        input_ids = batch['input_ids'][0]
+        logger.info(f"Input IDs sample (first 30): {input_ids[:30]}")
+        decoded_text = tokenizer.decode(input_ids.cpu(), skip_special_tokens=True)
+        logger.info(f"Decoded text (first 200 chars): {decoded_text[:200]!r}")
+        target = batch.get('target_texts', None) or batch.get('target_text', None)
+        if isinstance(target, (list, tuple)):
+            target = target[0]
+        logger.info(f"Target text (first 200 chars): {str(target)[:200]!r}")
+    except Exception as e:
+        logger.exception(f"Error while debugging data sample: {e}")
+
+
+def debug_adapter_output(model: nn.Module, batch: Dict[str, Any]):
+    """Run adapter on a batch and log basic statistics to detect NaNs/zeros/outliers."""
+    try:
+        logger.info("--- DEBUG ADAPTER OUTPUT ---")
+        chunk_enc = batch['chunk_encodings']
+        
+        # Get the device and dtype from the adapter
+        device = next(model.adapter.parameters()).device
+        dtype = next(model.adapter.parameters()).dtype
+        
+        # Move to same device and convert to correct dtype
+        chunk_enc = chunk_enc.to(device=device, dtype=dtype)
+        
+        with torch.no_grad():
+            out = model.adapter(chunk_enc)
+        
+        # Convert to float32 for statistics (bfloat16 can have precision issues)
+        out_f = out.to(torch.float32)
+        
+        logger.info(f"Adapter output shape: {out_f.shape}")
+        logger.info(f"Adapter output - min: {out_f.min().item():.6f}, max: {out_f.max().item():.6f}")
+        logger.info(f"Adapter output - mean: {out_f.mean().item():.6f}, std: {out_f.std().item():.6f}")
+        
+        # Check for NaNs or extreme values
+        if torch.isnan(out_f).any():
+            logger.error("WARNING: NaNs detected in adapter output!")
+        if torch.isinf(out_f).any():
+            logger.error("WARNING: Infs detected in adapter output!")
+        if out_f.abs().max() > 1000:
+            logger.warning("WARNING: Large values detected in adapter output!")
+            
+    except Exception as e:
+        logger.exception(f"Error while debugging adapter output: {e}")
 
 
 def evaluate_model(
@@ -422,13 +490,14 @@ def evaluate_model(
                 prompt_attention_mask=prompt_attention_mask,
                 max_length=config.max_target_length,
                 min_length=config.min_target_length,
-                temperature=config.temperature,
-                top_p=config.top_p,
-                repetition_penalty=config.repetition_penalty,
+                        temperature=config.temperature,
+                        top_p=config.top_p,
+                        repetition_penalty=config.repetition_penalty,
+                        num_beams=getattr(config, 'num_beams', 1),
                 tokenizer=tokenizer
             )
             
-            num_prefix_tokens = chunk_encodings.shape[1] + prompt_ids.shape[1]
+            num_prefix_tokens = prompt_ids.shape[1]
             generated_ids = generated_ids[:, num_prefix_tokens:]
             
             predictions = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
@@ -474,6 +543,16 @@ def train_model(
     model, optimizer, train_dataloader, val_dataloader, scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, val_dataloader, scheduler
     )
+
+    # Optional debug: show a single data sample and adapter stats
+    if config.debug and accelerator.is_main_process:
+        try:
+            sample_batch = next(iter(train_dataloader))
+            # Run tokenization / sample debug on CPU-friendly data
+            debug_data_sample(sample_batch, tokenizer)
+            debug_adapter_output(accelerator.unwrap_model(model), sample_batch)
+        except Exception:
+            logger.exception("Failed to run debug checks on a training batch.")
     
     best_val_loss = float('inf')
     best_val_rouge = 0.0
@@ -516,6 +595,16 @@ def train_model(
             
             if (batch_idx + 1) % config.gradient_accumulation_steps == 0:
                 accelerator.clip_grad_norm_(trainable_params, config.max_grad_norm)
+                # Optional debug: log gradient norms for trainable parameters
+                if config.debug and accelerator.is_main_process:
+                    try:
+                        for name, param in model.named_parameters():
+                            if param.requires_grad and param.grad is not None:
+                                gnorm = param.grad.norm().item()
+                                logger.info(f"Grad norm - {name}: {gnorm:.6f}")
+                    except Exception:
+                        logger.exception("Error when logging gradient norms")
+
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
@@ -719,6 +808,8 @@ def evaluate_finetuned(
     tokenizer = AutoTokenizer.from_pretrained(config.llama_model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    # Ensure padding side consistent between training and generation
+    tokenizer.padding_side = "left"
     
     test_dataset = ChunkEncodingDataset(
         test_data_path,
@@ -784,10 +875,281 @@ def evaluate_finetuned(
             f.write(test_log + "\n")
         
         # Save test results
-        test_results_path = Path(config.output_dir) / "test_results.json"
+        test_results_path = Path("evaluations") / "test_results.json"
         with open(test_results_path, 'w') as f:
             json.dump(test_metrics, f, indent=2)
         logger.info(f"Saved test results to {test_results_path}")
+
+
+def evaluate_base_model(
+    base_model,
+    dataloader: DataLoader,
+    tokenizer: AutoTokenizer,
+    config: LlamaAdapterConfig,
+    accelerator: Accelerator,
+    desc: str = "Base Model Evaluation"
+) -> Tuple[Dict[str, float], List[str], List[str]]:
+    """Evaluate a plain base Llama model (no adapter) using full document text as input."""
+    base_model.eval()
+    all_predictions = []
+    all_references = []
+    
+    eval_pbar = tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process)
+    
+    prompt = "Summarize the following document:\n\n"
+    prompt_encoding = tokenizer(prompt, add_special_tokens=True, return_tensors='pt')
+    prompt_len = len(prompt_encoding['input_ids'])
+    
+    # Leave room for generated tokens
+    max_input_length = 2048
+    
+    with torch.no_grad():
+        for batch in eval_pbar:
+            document_texts = batch['document_texts']
+            target_texts = batch['target_texts']
+            batch_size = len(document_texts)
+            
+            # For each document, create full input: prompt + document_text
+            full_inputs = [prompt + doc for doc in document_texts]
+            
+            # Tokenize batch with proper max length
+            encodings = tokenizer(
+                full_inputs,
+                max_length=max_input_length,
+                padding=True,
+                truncation=True,
+                return_tensors='pt'
+            )
+            
+            input_ids = encodings['input_ids'].to(accelerator.device)
+            attention_mask = encodings['attention_mask'].to(accelerator.device)
+            
+            # Generate summaries
+            generated_ids = base_model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=config.max_target_length,
+                min_new_tokens=config.min_target_length,
+                temperature=config.temperature,
+                top_p=config.top_p,
+                repetition_penalty=config.repetition_penalty,
+                num_beams=1,  # Use greedy decoding to save memory
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                use_cache=True
+            )
+            
+            # Decode predictions (remove input part)
+            predictions = []
+            for i in range(batch_size):
+                pred_ids = generated_ids[i]
+                # Remove the prompt part (prompt_len tokens)
+                gen_ids = pred_ids[prompt_len:]
+                pred_text = tokenizer.decode(gen_ids, skip_special_tokens=True)
+                predictions.append(pred_text)
+            
+            all_predictions.extend(predictions)
+            all_references.extend(target_texts)
+            
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    
+    metrics = compute_metrics(all_predictions, all_references)
+    return metrics, all_predictions, all_references
+def compare_adapter_vs_base(
+    config: LlamaAdapterConfig,
+    accelerator: Accelerator,
+    log_file: Path
+):
+    """Load the finetuned adapter model and the plain base model, evaluate both on the test set, and report a comparison."""
+    if accelerator.is_main_process:
+        logger.info("Comparing finetuned adapter model vs base Llama model on test set")
+
+    test_data_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
+    if not test_data_path.exists():
+        if accelerator.is_main_process:
+            logger.error(f"Test data not found: {test_data_path}")
+        return
+
+    best_model_path = Path(config.output_dir) / "best_model" / "model.pt"
+    if not best_model_path.exists():
+        if accelerator.is_main_process:
+            logger.error(f"Fine-tuned model not found: {best_model_path}")
+            with open(log_file, 'a') as f:
+                f.write(f"ERROR: Fine-tuned model not found at {best_model_path}\n")
+        return
+
+    # Tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(config.llama_model_name)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+
+    # Dataset/Dataloader
+    test_dataset = ChunkEncodingDataset(
+        test_data_path,
+        tokenizer,
+        max_chunks=config.max_chunks_per_story,
+        max_target_length=config.max_target_length
+    )
+
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+        collate_fn=collate_fn
+    )
+
+
+
+    # Load finetuned adapter model
+    finetuned_model = LlamaChunkAdapter(
+        llama_model_name=config.llama_model_name,
+        encoded_dim=config.encoded_dim,
+        adapter_hidden_dim=config.adapter_hidden_dim,
+        use_gradient_checkpointing=config.use_gradient_checkpointing,
+        freeze_llama=config.freeze_llama
+    )
+    if accelerator.is_main_process:
+        logger.info(f"Loading finetuned adapter model from {best_model_path}")
+
+    finetuned_model.load_state_dict(torch.load(best_model_path, map_location='cpu'))
+    finetuned_model = finetuned_model.to(accelerator.device)
+
+    # Load base model (plain Llama)
+    if accelerator.is_main_process:
+        logger.info(f"Loading base model {config.llama_model_name} for comparison")
+
+    base_model = AutoModelForCausalLM.from_pretrained(
+        config.llama_model_name,
+        torch_dtype=torch.bfloat16,
+        use_cache=True
+    )
+    base_model = base_model.to(accelerator.device)
+
+    # Prepare models/dataloaders for distributed env
+    finetuned_model, base_model, test_dataloader = accelerator.prepare(
+        finetuned_model, base_model, test_dataloader
+    )
+
+    # Create separate dataloader for base model with smaller batch size to save memory
+    base_dataloader = DataLoader(
+        test_dataset,
+        batch_size=4,  # Smaller batch size for base model
+        shuffle=False,
+        num_workers=config.num_workers,
+        collate_fn=collate_fn
+    )
+    base_dataloader = accelerator.prepare(base_dataloader)
+
+    # Evaluate finetuned adapter
+    adapter_metrics, adapter_preds, adapter_refs = evaluate_model(
+        accelerator.unwrap_model(finetuned_model),
+        test_dataloader,
+        tokenizer,
+        config,
+        accelerator,
+        desc="Adapter Model Evaluation"
+    )
+
+    # Evaluate base model (only uses text prompt)
+    base_metrics, base_preds, base_refs = evaluate_base_model(
+        accelerator.unwrap_model(base_model),
+        base_dataloader,
+        tokenizer,
+        config,
+        accelerator,
+        desc="Base Model Evaluation"
+    )
+
+    # Save and log comparison
+    comparison = {
+        'adapter_metrics': adapter_metrics,
+        'base_metrics': base_metrics,
+        'max_input_length_base_model': 2048
+    }
+
+    if accelerator.is_main_process:
+        comp_path = Path("evaluations") / "adapter_vs_base_comparison.json"
+        with open(comp_path, 'w') as f:
+            json.dump(comparison, f, indent=2)
+        logger.info(f"Saved adapter vs base comparison to {comp_path}")
+
+        # Print sample predictions
+        import random
+        num_samples = 3
+        if len(adapter_preds) >= num_samples:
+            indices = random.sample(range(len(adapter_preds)), num_samples)
+            
+            sample_log = "\n" + "="*80 + "\n"
+            sample_log += "SAMPLE PREDICTIONS FROM ADAPTER MODEL\n"
+            sample_log += "="*80 + "\n"
+            
+            print(sample_log, end="")
+            for i, idx in enumerate(indices):
+                sample = f"Sample {i+1}:\n"
+                sample += f"  Predicted: {adapter_preds[idx]}\n"
+                sample += f"  Reference: {adapter_refs[idx]}\n"
+                sample += "\n"
+                print(sample, end="")
+                sample_log += sample
+            
+            sample_log += "\n" + "="*80 + "\n"
+            sample_log += "SAMPLE PREDICTIONS FROM BASE MODEL\n"
+            sample_log += "="*80 + "\n"
+            
+            print(sample_log, end="")
+            for i, idx in enumerate(indices):
+                sample = f"Sample {i+1}:\n"
+                sample += f"  Predicted: {base_preds[idx]}\n"
+                sample += f"  Reference: {adapter_refs[idx]}\n"  # Note: adapter_refs is same as base_refs
+                sample += "\n"
+                print(sample, end="")
+                sample_log += sample
+
+        # Print comparison table
+        table_log = "\n" + "="*80 + "\n"
+        table_log += "ADAPTER VS BASE MODEL COMPARISON\n"
+        table_log += "="*80 + "\n"
+        table_log += f"{'Metric':<20} {'Adapter':<10} {'Base':<10} {'Difference':<10}\n"
+        table_log += "-"*60 + "\n"
+        for metric in ['rouge1', 'rouge2', 'rougeL', 'bertscore_f1', 'bertscore_precision', 'bertscore_recall']:
+            adapter_val = adapter_metrics.get(metric, 0.0)
+            base_val = base_metrics.get(metric, 0.0)
+            diff = adapter_val - base_val
+            table_log += f"{metric:<20} {adapter_val:.4f}    {base_val:.4f}    {diff:+.4f}\n"
+        table_log += "="*80 + "\n"
+        
+        print(table_log, end="")
+
+        # Save sample predictions and table to files
+        if len(adapter_preds) >= num_samples:
+            samples_path = Path("evaluations") / "sample_predictions.txt"
+            with open(samples_path, 'w') as f:
+                f.write(sample_log)
+            logger.info(f"Saved sample predictions to {samples_path}")
+
+        table_path = Path("evaluations") / "comparison_table.txt"
+        with open(table_path, 'w') as f:
+            f.write(table_log)
+        logger.info(f"Saved comparison table to {table_path}")
+
+        # Append to log
+        with open(log_file, 'a') as f:
+            if len(adapter_preds) >= num_samples:
+                f.write(sample_log)
+            f.write(table_log)
+            f.write("\nAdapter vs Base Comparison:\n")
+            f.write(json.dumps(comparison, indent=2))
+            f.write("\n")
+
+    # Cleanup
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
+    return comparison
 
 
 def main():
@@ -807,6 +1169,13 @@ def main():
             DistributedDataParallelKwargs(find_unused_parameters=False)  # Changed to False
         ]
     )
+
+    # Command-line arguments: allow eval-only or comparison modes
+    parser = argparse.ArgumentParser(description="Llama adapter training/evaluation")
+    parser.add_argument('--eval-only', action='store_true', help='Only evaluate the saved finetuned adapter on the test set and exit')
+    parser.add_argument('--compare-base', action='store_true', help='Evaluate finetuned adapter and the plain base model and save a comparison')
+    parser.add_argument('--model-path', type=str, default=None, help='Path to a saved finetuned model.pt (optional)')
+    args = parser.parse_args()
     
     set_seed(config.seed)
     
@@ -833,6 +1202,7 @@ def main():
         
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
         Path(config.logs_dir).mkdir(parents=True, exist_ok=True)
+        Path("evaluations").mkdir(parents=True, exist_ok=True)
     
     accelerator.wait_for_everyone()
     
@@ -844,6 +1214,19 @@ def main():
             f.write(f"Memory-Optimized Llama 1B Adapter Training Log\n")
             f.write(f"Started at: {datetime.now().isoformat()}\n")
             f.write(f"{'='*80}\n\n")
+
+    # If user requested eval-only or comparison, run that and exit early
+    if args.eval_only:
+        if accelerator.is_main_process:
+            logger.info("Running in --eval-only mode: evaluating saved finetuned model and exiting.")
+        evaluate_finetuned(config, accelerator, log_file)
+        return
+
+    if args.compare_base:
+        if accelerator.is_main_process:
+            logger.info("Running in --compare-base mode: comparing adapter vs base and exiting.")
+        compare_adapter_vs_base(config, accelerator, log_file)
+        return
     
     if accelerator.is_main_process:
         logger.info("\nLoading datasets...")
@@ -859,6 +1242,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(config.llama_model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    # Ensure padding side consistent between training and generation
+    tokenizer.padding_side = "left"
     
     train_dataset = ChunkEncodingDataset(
         train_data_path,
