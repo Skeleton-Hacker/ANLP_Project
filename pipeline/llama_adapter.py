@@ -136,8 +136,8 @@ class ChunkEncodingDataset(Dataset):
         chunk_encodings = torch.FloatTensor(encoded_embeddings).to(torch.bfloat16)
         target_text = story_data['document']['summary']['text']
         
-        prompt = "Summarize the following document:\n\n"
-        full_text = prompt + target_text
+        prompt = "Summarize the following document. Give in paragraph format:\n\n"
+        full_text = prompt + target_text # adding the prompt again since it is not listenting to it at all
         
         prompt_encoding = self.tokenizer(
             prompt,
@@ -470,7 +470,7 @@ def evaluate_model(
     
     eval_pbar = tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process)
     
-    prompt = "Summarize the following document:\n\n"
+    prompt = "Summarize the following document. Give in paragraph format:\n\n"
     prompt_encoding = tokenizer(prompt, add_special_tokens=True, return_tensors='pt')
     
     with torch.no_grad():
@@ -896,7 +896,7 @@ def evaluate_base_model(
     
     eval_pbar = tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process)
     
-    prompt = "Summarize the following document:\n\n"
+    prompt = "Summarize the following document. Give in paragraph format:\n\n"
     prompt_encoding = tokenizer(prompt, add_special_tokens=True, return_tensors='pt')
     prompt_len = len(prompt_encoding['input_ids'])
     
