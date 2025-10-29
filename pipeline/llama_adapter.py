@@ -1071,7 +1071,7 @@ def compare_adapter_vs_base(
     }
 
     if accelerator.is_main_process:
-        comp_path = Path("evaluations") / "adapter_vs_base_comparison.json"
+        comp_path = Path("evaluations") / "llama_adapter_vs_base_comparison.json"
         with open(comp_path, 'w') as f:
             json.dump(comparison, f, indent=2)
         logger.info(f"Saved adapter vs base comparison to {comp_path}")
@@ -1110,7 +1110,7 @@ def compare_adapter_vs_base(
 
         # Print comparison table
         table_log = "\n" + "="*80 + "\n"
-        table_log += "ADAPTER VS BASE MODEL COMPARISON\n"
+        table_log += "ADAPTER VS BASE MODEL COMPARISON (LLAMA)\n"
         table_log += "="*80 + "\n"
         table_log += f"{'Metric':<20} {'Adapter':<10} {'Base':<10} {'Difference':<10}\n"
         table_log += "-"*60 + "\n"
@@ -1118,19 +1118,19 @@ def compare_adapter_vs_base(
             adapter_val = adapter_metrics.get(metric, 0.0)
             base_val = base_metrics.get(metric, 0.0)
             diff = adapter_val - base_val
-            table_log += f"{metric:<20} {adapter_val:.4f}    {base_val:.4f}    {diff:+.4f}\n"
+            table_log += f"{metric:<20} {adapter_val:<10.4f} {base_val:<10.4f} {diff:<+10.4f}\n"
         table_log += "="*80 + "\n"
         
         print(table_log, end="")
 
         # Save sample predictions and table to files
         if len(adapter_preds) >= num_samples:
-            samples_path = Path("evaluations") / "sample_predictions.txt"
+            samples_path = Path("evaluations") / "llama_sample_predictions.txt"
             with open(samples_path, 'w') as f:
                 f.write(sample_log)
             logger.info(f"Saved sample predictions to {samples_path}")
 
-        table_path = Path("evaluations") / "comparison_table.txt"
+        table_path = Path("evaluations") / "llama_comparison_table.txt"
         with open(table_path, 'w') as f:
             f.write(table_log)
         logger.info(f"Saved comparison table to {table_path}")

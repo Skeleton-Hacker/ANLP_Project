@@ -1,0 +1,40 @@
+SAMPLE PREDICTIONS - ADAPTER VS BASE MODEL (T5)
+================================================================================
+
+--- Sample 1 ---
+Reference:
+   Mark Hunter (Slater), a high school student in a sleepy suburb of Phoenix, Arizona, starts an FM pirate radio station that broadcasts from the basement of his parents' house. Mark is a loner, an outsider, whose only outlet for his teenage angst and aggression is his unauthorized radio station. His pirate station's theme song is "Everybody Knows" by Leonard Cohen and there are glimpses of cassettes by such alternative musicians as The Jesus and Mary Chain, Camper Van Beethoven, Primal Scream, Soundgarden, Ice-T, Bad Brains, Concrete Blonde, Henry Rollins, and The Pixies. By day, Mark is seen as a loner, hardly talking to anyone around him; by night, he expresses his outsider views about what is wrong with American society. When he speaks his mind about what is going on at his school and in the community, more and more of his fellow students tune in to hear his show.
+Nobody knows the true identity of "Hard Harry" or "Happy Harry Hard-on," as Mark refers to himself, until Nora Diniro (Mathis), a fellow student, tracks him down and confronts him the day after a student named Malcolm commits suicide after Harry attempts to reason with him. The radio show becomes increasingly popular and influential after Harry confronts the suicide head-on, exhorting his listeners to do something about their problems instead of surrendering to them through suicideâat the crescendo of his yelled speech, an overachieving student named Paige Woodward (who has been a constant listener) jams her various medals and accolades into a microwave and turns it on. She then sits, watching the awards cook until the microwave explodes, injuring her. While this is happening, other students act out in cathartic release.
+Eventually, the radio show causes so much trouble in the community that the FCC is called in to investigate. During the fracas, it is revealed that the school's principal (Annie Ross) has been expelling "problem students," namely, students with below-average standardized test scores, in an effort to boost the district's test scores while still keeping their names on the rolls (a criminal offense) in order to retain government funding.
+Realizing he has started something huge, Mark decides it is up to him to end it. He dismantles his radio station and attaches it to his mother's old jeep, creating a mobile transmitter so his position can't be triangulated. Pursued by the police and the FCC, Nora drives the jeep around while Mark broadcasts. The harmonizer he uses to disguise his voice breaks, and with no time left to fix it, Mark decides to broadcast his final message as himself. They finally drive up to the crowd of protesting students, and Mark tells them that the world belongs to them and that they should make their own future. The police step in and arrest Mark and Nora. As they are taken away, Mark reminds the students to "talk hard." As the film ends, the voices of other students (and even one of the teachers) speak as intros for their own independent stations, which can be heard broadcasting across the country.
+
+Adapter Prediction:
+  s, the a his. and of with in ishe who' for that to on aneo theiryiising him her it but they willnmly from as "dh;andrth) are The He family at them outan,, I His both, also- where, be deher by which when myt,:hisowll, AJ’than, not you, son alinor ork, sow" this wayof brothers, en its new,, has), ky one twothe there,  ship canjonmanable
+
+Base Model Prediction:
+  Happy Harry Hardon reminds you to eat your cereal with a fork and do your homework in the dark. nora Diniro - Oh, Miss Paige Woodward arriving. Janie - Off course. Nora - He comes on every night at ten o'clock.
+--------------------------------------------------------------------------------
+
+--- Sample 2 ---
+Reference:
+   Maskull, a man longing for adventures, accepts an invitation from Krag, an acquaintance of his friend Nightspore, to travel to Tormance after a seance. The three set off in a crystal ship from an abandoned observatory in Scotland but Maskull awakens to find himself alone on Tormance. In every land he passes through he usually meets only one or two persons; these meetings often (though not always) end in the death of those he meets, either at his own hand or by that of another. He learns of his own impending death, meets Krag again, and dies shortly after learning that he is in fact Nightspore himself. The book concludes with a final revelation from Krag (who claims to be known on Earth as "Pain") to Nightspore about the origin of the Universe. The author turns out to support a variation of the doctrine of the Demiurge, somewhat similar to that propounded by some Gnostics.
+All of the characters and lands are types used to convey the author's critique of several philosophical systems. On Tormance, most such viewpoints or ways of life are accompanied by corresponding new bodily sense organs or modifications of the same, thus each distinct Weltanschauung landscape has its corresponding sensorium.
+
+Adapter Prediction:
+  , a of the ands. his' " is that in withde on who to her foro as at an which but)’hey byiis it its family: their them they arening from him not;ly both deand alsom ( en He The newhran born His son so th hasp tlaw where she was because ).  ow be daughter - f
+
+Base Model Prediction:
+  the project Gutenberg EBook of a Voyage to Arcturus by David Lindsay This eBook is for the use of anyone anywhere at no cost and with almost no restrictions whatsoever. you may copy it, give it away or re-use it under the terms of the Project Gutenberg License included with this eBook or online at www.gutenberg.org.
+--------------------------------------------------------------------------------
+
+--- Sample 3 ---
+Reference:
+   The story follows its title heroine, from childhood to confirmation. After her mother's death, Lisbeth (given the nickname Longskirt, or SidsĂŚrk in the original Norwegian, because of her much too-long skirt, a Christmas present given her by her brother) as she moves from her original home at New Ridge farm (called "Peerout Castle" for its fine view of the valley), to Hoel farm, one of the central farms of the area. Her brother, Jacob, also goes to Nordrum farm to become a herdsman there. At Hoel, Lisbeth is cared for by Kjersti Hoel, the farm's owner, who has made a promise to Lisbeth's mother before she died. Lisbeth works with livestock both at the farm, and at the seter (sĂŚter in the book's transliteration), a mountain pasture used during the summertime. At the seter, Lisbeth meets two other herdsmen from neighboring farms, and spends the summer with them, getting to know them as she grows up.
+The content of the book concerns the difficult conditions of the work of the country children who had to eke out a poor existence far away from their parents. In spite of this account of their hard lot an optimistic kind of portrayal is predominant.
+
+Adapter Prediction:
+  s a, the. and is of inde'yo to by her hisi’ that " at annh:ow from family on Thely who for sonmt withan it asth (Jen Hor");and them they she deheing
+
+Base Model Prediction:
+  the project Gutenberg EBook of Lisbeth Longfrock by Hans Aanrud is for the use of anyone anywhere at no cost and with almost no restrictions whatsoever. you may copy it, give it away or re-use it under the terms of the Project Gutenberg License included with this eBook or online at www.gutenberg.net.
+--------------------------------------------------------------------------------

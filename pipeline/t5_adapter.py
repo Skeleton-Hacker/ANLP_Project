@@ -13,6 +13,7 @@ It includes:
 import logging
 import pickle
 import os
+import argparse
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
@@ -139,6 +140,9 @@ class ChunkEncodingDataset(Dataset):
         # Get target summary
         target_text = story_data['document']['summary']['text']
         
+        # Get document text (concatenated chunks)
+        document_text = ' '.join(story_data['chunks']) if 'chunks' in story_data else ""
+        
         # Tokenize target
         target_encoding = self.tokenizer(
             target_text,
@@ -153,7 +157,8 @@ class ChunkEncodingDataset(Dataset):
             'num_chunks': len(encoded_embeddings),
             'target_ids': target_encoding['input_ids'].squeeze(0),
             'target_attention_mask': target_encoding['attention_mask'].squeeze(0),
-            'target_text': target_text
+            'target_text': target_text,
+            'document_text': document_text
         }
 
 
@@ -190,7 +195,8 @@ def collate_fn(batch):
         'chunk_attention_mask': torch.stack(attention_masks),  # (batch, max_chunks)
         'target_ids': torch.stack([item['target_ids'] for item in batch]),
         'target_attention_mask': torch.stack([item['target_attention_mask'] for item in batch]),
-        'target_texts': [item['target_text'] for item in batch]
+        'target_texts': [item['target_text'] for item in batch],
+        'document_texts': [item['document_text'] for item in batch]
     }
 
 
@@ -747,6 +753,252 @@ def evaluate_finetuned(
         logger.info(f"Saved test results to {test_results_path}")
 
 
+def evaluate_base_model(
+    base_model: T5ForConditionalGeneration,
+    dataloader: DataLoader,
+    tokenizer: T5Tokenizer,
+    config: T5AdapterConfig,
+    accelerator: Accelerator,
+    desc: str = "Base Model Evaluation"
+) -> Tuple[Dict[str, float], List[str], List[str]]:
+    """Evaluate a plain base T5 model (no adapter) using full document text as input.
+    
+    Args:
+        base_model: Base T5 model.
+        dataloader: DataLoader for evaluation.
+        tokenizer: T5 tokenizer.
+        config: Configuration.
+        accelerator: Accelerator instance.
+        desc: Description for progress bar.
+        
+    Returns:
+        Tuple of (metrics, predictions, references).
+    """
+    base_model.eval()
+    all_predictions = []
+    all_references = []
+    
+    eval_pbar = tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process)
+    
+    # Maximum input length for T5 (leave room for generation)
+    max_input_length = 512
+    
+    with torch.no_grad():
+        for batch in eval_pbar:
+            # Get document texts and target texts from batch
+            document_texts = batch['document_texts']
+            target_texts = batch['target_texts']
+            
+            # Prepare inputs with "summarize: " prefix for T5
+            inputs = ["summarize: " + doc_text[:2000] for doc_text in document_texts]  # Truncate long docs
+            
+            # Tokenize inputs
+            input_encodings = tokenizer(
+                inputs,
+                max_length=max_input_length,
+                padding=True,
+                truncation=True,
+                return_tensors='pt'
+            ).to(accelerator.device)
+            
+            # Generate
+            generated_ids = base_model.generate(
+                input_ids=input_encodings['input_ids'],
+                attention_mask=input_encodings['attention_mask'],
+                max_length=config.max_target_length,
+                min_length=config.min_target_length,
+                num_beams=config.num_beams,
+                repetition_penalty=config.repetition_penalty,
+                length_penalty=config.length_penalty,
+                no_repeat_ngram_size=config.no_repeat_ngram_size
+            )
+            
+            # Decode
+            predictions = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+            
+            all_predictions.extend(predictions)
+            all_references.extend(target_texts)
+    
+    metrics = compute_metrics(all_predictions, all_references)
+    return metrics, all_predictions, all_references
+
+
+def compare_adapter_vs_base(
+    config: T5AdapterConfig,
+    accelerator: Accelerator,
+    log_file: Path
+):
+    """Load the finetuned adapter model and the plain base model, evaluate both on the test set, and report a comparison.
+    
+    Args:
+        config: Configuration.
+        accelerator: Accelerator instance.
+        log_file: Path to log file.
+    """
+    if accelerator.is_main_process:
+        logger.info("\n" + "="*80)
+        logger.info("Comparing finetuned adapter model vs base T5 model on test set")
+        logger.info("="*80)
+
+    test_data_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
+    if not test_data_path.exists():
+        if accelerator.is_main_process:
+            logger.error(f"Test data not found: {test_data_path}")
+        return
+
+    best_model_path = Path(config.output_dir) / "best_model" / "model.pt"
+    if not best_model_path.exists():
+        if accelerator.is_main_process:
+            logger.error(f"Fine-tuned model not found: {best_model_path}")
+            with open(log_file, 'a') as f:
+                f.write(f"ERROR: Fine-tuned model not found at {best_model_path}\n")
+        return
+
+    # Tokenizer
+    tokenizer = T5Tokenizer.from_pretrained(config.t5_model_name)
+
+    # Dataset/Dataloader
+    test_dataset = ChunkEncodingDataset(
+        test_data_path,
+        tokenizer,
+        max_chunks=config.max_chunks_per_story,
+        max_target_length=config.max_target_length
+    )
+
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+        collate_fn=collate_fn
+    )
+
+    # Load finetuned adapter model
+    finetuned_model = T5ChunkAdapter(
+        t5_model_name=config.t5_model_name,
+        encoded_dim=config.encoded_dim,
+        adapter_hidden_dim=config.adapter_hidden_dim
+    )
+    if accelerator.is_main_process:
+        logger.info(f"Loading finetuned adapter model from {best_model_path}")
+
+    finetuned_model.load_state_dict(torch.load(best_model_path, map_location='cpu'))
+    finetuned_model = finetuned_model.to(accelerator.device)
+
+    # Load base model (plain T5)
+    if accelerator.is_main_process:
+        logger.info(f"Loading base model {config.t5_model_name} for comparison")
+
+    base_model = T5ForConditionalGeneration.from_pretrained(config.t5_model_name)
+    base_model = base_model.to(accelerator.device)
+
+    # Prepare models/dataloaders for distributed env
+    finetuned_model, base_model, test_dataloader = accelerator.prepare(
+        finetuned_model, base_model, test_dataloader
+    )
+
+    # Create separate dataloader for base model with smaller batch size to save memory
+    base_dataloader = DataLoader(
+        test_dataset,
+        batch_size=4,  # Smaller batch size for base model
+        shuffle=False,
+        num_workers=config.num_workers,
+        collate_fn=collate_fn
+    )
+    base_dataloader = accelerator.prepare(base_dataloader)
+
+    # Evaluate finetuned adapter
+    adapter_metrics, adapter_preds, adapter_refs = evaluate_model(
+        accelerator.unwrap_model(finetuned_model),
+        test_dataloader,
+        tokenizer,
+        config,
+        accelerator,
+        desc="Adapter Model Evaluation"
+    )
+
+    # Evaluate base model
+    base_metrics, base_preds, base_refs = evaluate_base_model(
+        accelerator.unwrap_model(base_model),
+        base_dataloader,
+        tokenizer,
+        config,
+        accelerator,
+        desc="Base Model Evaluation"
+    )
+
+    # Save and log comparison
+    comparison = {
+        'adapter_metrics': adapter_metrics,
+        'base_metrics': base_metrics,
+        'max_input_length_base_model': 512
+    }
+
+    if accelerator.is_main_process:
+        # Create evaluations directory if it doesn't exist
+        Path("evaluations").mkdir(parents=True, exist_ok=True)
+        
+        comp_path = Path("evaluations") / "t5_adapter_vs_base_comparison.json"
+        with open(comp_path, 'w') as f:
+            json.dump(comparison, f, indent=2)
+        logger.info(f"Saved adapter vs base comparison to {comp_path}")
+
+        # Print sample predictions
+        logger.info("\n" + "="*80)
+        logger.info("SAMPLE PREDICTIONS")
+        logger.info("="*80)
+        num_samples = 3
+        if len(adapter_preds) >= num_samples:
+            sample_log = ""
+            for i in range(num_samples):
+                sample_log += f"\n--- Sample {i+1} ---\n"
+                sample_log += f"Reference:\n  {adapter_refs[i]}\n\n"
+                sample_log += f"Adapter Prediction:\n  {adapter_preds[i]}\n\n"
+                sample_log += f"Base Model Prediction:\n  {base_preds[i]}\n"
+                sample_log += "-" * 80 + "\n"
+            
+            logger.info(sample_log)
+            
+            # Save sample predictions to file
+            sample_path = Path("evaluations") / "t5_sample_predictions.txt"
+            with open(sample_path, 'w') as f:
+                f.write("SAMPLE PREDICTIONS - ADAPTER VS BASE MODEL (T5)\n")
+                f.write("="*80 + "\n")
+                f.write(sample_log)
+            logger.info(f"Saved sample predictions to {sample_path}")
+
+        # Print comparison table
+        table_log = "\n" + "="*80 + "\n"
+        table_log += "ADAPTER VS BASE MODEL COMPARISON (T5)\n"
+        table_log += "="*80 + "\n"
+        table_log += f"{'Metric':<20} {'Adapter':<10} {'Base':<10} {'Difference':<10}\n"
+        table_log += "-"*60 + "\n"
+        for metric in ['rouge1', 'rouge2', 'rougeL', 'bertscore_f1', 'bertscore_precision', 'bertscore_recall']:
+            adapter_val = adapter_metrics[metric]
+            base_val = base_metrics[metric]
+            diff = adapter_val - base_val
+            table_log += f"{metric:<20} {adapter_val:<10.4f} {base_val:<10.4f} {diff:<+10.4f}\n"
+        table_log += "="*80 + "\n"
+        
+        print(table_log, end="")
+
+        # Save comparison table to file
+        table_path = Path("evaluations") / "t5_comparison_table.txt"
+        with open(table_path, 'w') as f:
+            f.write(table_log)
+        logger.info(f"Saved comparison table to {table_path}")
+
+        # Log to log file
+        with open(log_file, 'a') as f:
+            f.write("\n" + "="*80 + "\n")
+            f.write("ADAPTER VS BASE MODEL COMPARISON\n")
+            f.write("="*80 + "\n")
+            f.write(table_log)
+            f.write("\n")
+
+    return comparison
+
+
 def main():
     """Main training and evaluation pipeline."""
     # Setup logging
@@ -765,6 +1017,13 @@ def main():
             DistributedDataParallelKwargs(find_unused_parameters=True)
         ]
     )
+
+    # Command-line arguments: allow eval-only or comparison modes
+    parser = argparse.ArgumentParser(description="T5 adapter training/evaluation")
+    parser.add_argument('--eval-only', action='store_true', help='Only evaluate the saved finetuned adapter on the test set and exit')
+    parser.add_argument('--compare-base', action='store_true', help='Evaluate finetuned adapter and the plain base model and save a comparison')
+    parser.add_argument('--model-path', type=str, default=None, help='Path to a saved finetuned model.pt (optional)')
+    args = parser.parse_args()
     
     # Set seed
     set_seed(config.seed)
@@ -800,6 +1059,19 @@ def main():
             f.write(f"T5 Adapter Training Log\n")
             f.write(f"Started at: {datetime.now().isoformat()}\n")
             f.write(f"{'='*80}\n\n")
+
+    # If user requested eval-only or comparison, run that and exit early
+    if args.eval_only:
+        if accelerator.is_main_process:
+            logger.info("Running in eval-only mode")
+        evaluate_finetuned(config, accelerator, log_file)
+        return
+
+    if args.compare_base:
+        if accelerator.is_main_process:
+            logger.info("Running comparison mode: adapter vs base model")
+        compare_adapter_vs_base(config, accelerator, log_file)
+        return
     
     # Load data
     if accelerator.is_main_process:

@@ -23,3 +23,6 @@ accelerate launch llama_adapter.py
 ```bash
 accelerate launch t5_adapter.py
 ```
+
+
+Mention about the BERT score similarity between llama adapter and llama base.
