@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Config:
     dataset_name: str = "deepmind/narrativeqa"
-    model_name: str = "BAAI/bge-m3"
+    model_name: str = "BAAI/bge-large-en-v1.5"
     threshold: float = 0.5
     max_samples: Optional[int] = None
     output_dir: str = "chunked_data"
@@ -77,7 +77,7 @@ class GraphBasedChunker:
     
     def __init__(
         self,
-        model_name: str = "BAAI/bge-m3",
+        model_name: str = "BAAI/bge-large-en-v1.5",
         device: str = "cpu",
         threshold: float = 0.5,
         accelerator: Optional[Accelerator] = None
@@ -91,12 +91,9 @@ class GraphBasedChunker:
             accelerator: Accelerator instance for distributed processing.
         """
         self.accelerator = accelerator
-        
-        # Load the model using safetensors to avoid torch.load vulnerability issues
-        # on older torch versions. The model is loaded into memory on the CPU first.
-        self.model = SentenceTransformer(model_name, device='cpu')
-        self.model.to(device) # Move model to the target device (e.g., 'cuda:0')
-        
+        # Load model with safetensors
+        self.model = SentenceTransformer(model_name, device='cpu', use_auth_token=False)
+        self.model.to(device)
         self.threshold = threshold
         self.sentence_splitter = SemanticSentenceChunker()
         

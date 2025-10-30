@@ -218,7 +218,11 @@ class BartChunkEncoder(nn.Module):
         """
         super(BartChunkEncoder, self).__init__()
         
-        self.bart = BartForConditionalGeneration.from_pretrained(bart_model_name)
+        # Load BART model using safetensors to avoid torch.load vulnerability
+        self.bart = BartForConditionalGeneration.from_pretrained(
+            bart_model_name,
+            use_safetensors=True
+        )
         self.bart_hidden_dim = self.bart.config.d_model
         
         # Simple projection layer: encoded_dim -> bart_hidden_dim
@@ -609,8 +613,11 @@ def evaluate_finetuned(
         logger.error("Please train the model first!")
         return
     
-    # Initialize tokenizer
-    tokenizer = BartTokenizer.from_pretrained(config.bart_model_name)
+    # Initialize tokenizer using safetensors
+    tokenizer = BartTokenizer.from_pretrained(
+        config.bart_model_name,
+        use_safetensors=True
+    )
     
     # Create test dataset and dataloader
     test_dataset = ChunkEncodingDataset(
@@ -773,8 +780,11 @@ def compare_finetuned_vs_base(
         logger.error("Please train the model first!")
         return
 
-    # Tokenizer
-    tokenizer = BartTokenizer.from_pretrained(config.bart_model_name)
+    # Tokenizer using safetensors
+    tokenizer = BartTokenizer.from_pretrained(
+        config.bart_model_name,
+        use_safetensors=True
+    )
 
     # Dataset/Dataloader
     test_dataset = ChunkEncodingDataset(
@@ -808,7 +818,11 @@ def compare_finetuned_vs_base(
     if accelerator.is_main_process:
         logger.info(f"Loading base BART model: {config.bart_model_name}")
 
-    base_model = BartForConditionalGeneration.from_pretrained(config.bart_model_name)
+    # Load base BART model using safetensors to avoid torch.load vulnerability
+    base_model = BartForConditionalGeneration.from_pretrained(
+        config.bart_model_name,
+        use_safetensors=True
+    )
     base_model = base_model.to(accelerator.device)
 
     # Prepare models/dataloaders for distributed env
@@ -1002,8 +1016,11 @@ def main():
         logger.error(f"Training or validation data not found!")
         return
     
-    # Initialize tokenizer
-    tokenizer = BartTokenizer.from_pretrained(config.bart_model_name)
+    # Initialize tokenizer using safetensors
+    tokenizer = BartTokenizer.from_pretrained(
+        config.bart_model_name,
+        use_safetensors=True
+    )
     
     # Create datasets
     train_dataset = ChunkEncodingDataset(
