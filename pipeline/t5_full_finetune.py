@@ -1,11 +1,11 @@
 """
 T5 Full Model Fine-tuning with Chunk Embeddings
 
-This module fine-tunes T5-small encoder for summarization using chunk encodings.
+This module fine-tunes T5-small (both encoder and decoder) for summarization using chunk encodings.
 It includes:
 - Loading encoded chunks from pickle files
 - Direct projection layer to map chunk encodings to T5 embedding space
-- Fine-tuning encoder only (decoder frozen)
+- Fine-tuning both encoder and decoder (or encoder only if specified)
 - Evaluation using ROUGE and BERTScore
 - Comprehensive logging and model checkpointing
 """
@@ -61,7 +61,7 @@ class T5FullConfig:
     gradient_accumulation_steps: int = 2
     max_grad_norm: float = 1.0
     early_stopping_patience: int = 5
-    freeze_decoder: bool = True  # Only finetune encoder
+    freeze_decoder: bool = False  # Finetune both encoder and decoder
     
     # Generation settings
     max_chunks_per_story: int = 800  # Maximum number of chunks to use per story
@@ -201,13 +201,13 @@ def collate_fn(batch):
 
 
 class T5ChunkEncoder(nn.Module):
-    """T5 model with projection layer for chunk encodings. Only encoder is finetuned."""
+    """T5 model with projection layer for chunk encodings. Can finetune encoder, decoder, or both."""
     
     def __init__(
         self,
         t5_model_name: str,
         encoded_dim: int,
-        freeze_decoder: bool = True
+        freeze_decoder: bool = False
     ):
         """Initialize T5 chunk encoder model.
         
@@ -233,6 +233,8 @@ class T5ChunkEncoder(nn.Module):
             # Also freeze lm_head
             for param in self.t5.lm_head.parameters():
                 param.requires_grad = False
+        else:
+            logger.info("Fine-tuning both encoder and decoder...")
         
         # Log trainable parameters
         total_params = sum(p.numel() for p in self.parameters())
@@ -914,8 +916,12 @@ def compare_finetuned_vs_base(
         logger.info("COMPARISON RESULTS")
         logger.info("=" * 50)
         
+        # Create evaluations directory
+        evaluations_dir = Path("evaluations")
+        evaluations_dir.mkdir(parents=True, exist_ok=True)
+        
         # Save comparison results
-        comparison_path = Path(config.output_dir) / "finetuned_vs_base_comparison.json"
+        comparison_path = evaluations_dir / "t5_full_finetuned_vs_base_comparison.json"
         with open(comparison_path, 'w') as f:
             json.dump(comparison, f, indent=2)
         
@@ -937,9 +943,9 @@ def compare_finetuned_vs_base(
         logger.info("-" * 70)
         
         # Save comparison table to file
-        table_path = Path(config.output_dir) / "comparison_table.txt"
+        table_path = evaluations_dir / "t5_full_comparison_table.txt"
         with open(table_path, 'w') as f:
-            f.write("COMPARISON: Fine-tuned T5 (Encoder Only) vs Base T5\n")
+            f.write("COMPARISON: Fine-tuned T5 (Full Model) vs Base T5\n")
             f.write("=" * 70 + "\n\n")
             f.write(f"{'Metric':<25} {'Fine-tuned':>15} {'Base':>15} {'Improvement':>15}\n")
             f.write("-" * 70 + "\n")
@@ -956,7 +962,7 @@ def compare_finetuned_vs_base(
         logger.info(f"Comparison table saved to {table_path}")
         
         # Save sample predictions from both models
-        sample_path = Path(config.output_dir) / "sample_predictions_comparison.txt"
+        sample_path = evaluations_dir / "t5_full_sample_predictions.txt"
         with open(sample_path, 'w') as f:
             f.write("Sample Predictions: Fine-tuned vs Base Model\n")
             f.write("=" * 70 + "\n\n")
@@ -988,12 +994,12 @@ def main():
     accelerator = Accelerator(
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         kwargs_handlers=[
-            DistributedDataParallelKwargs(find_unused_parameters=False)
+            DistributedDataParallelKwargs(find_unused_parameters=True)
         ]
     )
 
     # Command-line arguments: allow eval-only or comparison modes
-    parser = argparse.ArgumentParser(description="T5 full model (encoder) training/evaluation")
+    parser = argparse.ArgumentParser(description="T5 full model (encoder + decoder) training/evaluation")
     parser.add_argument('--eval-only', action='store_true', help='Only evaluate the saved finetuned model on the test set and exit')
     parser.add_argument('--compare-base', action='store_true', help='Evaluate finetuned model and the plain base model and save a comparison')
     parser.add_argument('--model-path', type=str, default=None, help='Path to a saved finetuned model.pt (optional)')
@@ -1004,7 +1010,8 @@ def main():
     
     if accelerator.is_main_process:
         logger.info("=" * 50)
-        logger.info("T5 Full Model Fine-tuning (Encoder Only)")
+        training_mode = "Encoder Only" if config.freeze_decoder else "Full Model (Encoder + Decoder)"
+        logger.info(f"T5 Full Model Fine-tuning ({training_mode})")
         logger.info("=" * 50)
         logger.info(f"Configuration:")
         logger.info(f"  Model: {config.t5_model_name}")

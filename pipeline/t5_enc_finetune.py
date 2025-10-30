@@ -1,11 +1,11 @@
 """
-T5 Adapter for Fine-tuning with Chunk Embeddings
+T5 Full Model Fine-tuning with Chunk Embeddings
 
-This module fine-tunes T5-small for summarization using chunk encodings instead of text.
+This module fine-tunes T5-small encoder for summarization using chunk encodings.
 It includes:
 - Loading encoded chunks from pickle files
-- Adapter layer to project chunk encodings to T5 embedding space
-- Fine-tuning with early stopping
+- Direct projection layer to map chunk encodings to T5 embedding space
+- Fine-tuning encoder only (decoder frozen)
 - Evaluation using ROUGE and BERTScore
 - Comprehensive logging and model checkpointing
 """
@@ -17,7 +17,7 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -41,17 +41,16 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
 @dataclass
-class T5AdapterConfig:
-    """Configuration for T5 adapter training."""
+class T5FullConfig:
+    """Configuration for T5 full model training."""
     # Data settings
     encoded_data_dir: str = "chunked_data"
-    output_dir: str = "models/t5_adapter"
+    output_dir: str = "models/t5_full"
     logs_dir: str = "logs"
     
     # Model settings
     t5_model_name: str = "t5-small"
     encoded_dim: int = 64  # Dimension of encoded chunks from autoencoder
-    adapter_hidden_dim: int = 256  # Hidden dimension for adapter layer
     
     # Training settings
     batch_size: int = 24
@@ -62,6 +61,7 @@ class T5AdapterConfig:
     gradient_accumulation_steps: int = 2
     max_grad_norm: float = 1.0
     early_stopping_patience: int = 5
+    freeze_decoder: bool = True  # Only finetune encoder
     
     # Generation settings
     max_chunks_per_story: int = 800  # Maximum number of chunks to use per story
@@ -89,8 +89,8 @@ class ChunkEncodingDataset(Dataset):
         self,
         encoded_data_path: Path,
         tokenizer: T5Tokenizer,
-        max_chunks: int = 20,
-        max_target_length: int = 128
+        max_chunks: int = 800,
+        max_target_length: int = 150
     ):
         """Initialize dataset.
         
@@ -115,7 +115,7 @@ class ChunkEncodingDataset(Dataset):
         # Create list of samples (story_id)
         self.samples = []
         for story_id, story_data in self.stories.items():
-            if 'document' in story_data and 'summary' in story_data['document'] and 'text' in story_data['document']['summary']:
+            if 'encoded_embeddings' in story_data and len(story_data['encoded_embeddings']) > 0:
                 self.samples.append(story_id)
         
         logger.info(f"Loaded {len(self.samples)} samples from {len(self.stories)} stories")
@@ -130,7 +130,7 @@ class ChunkEncodingDataset(Dataset):
         # Get encoded embeddings
         encoded_embeddings = story_data['encoded_embeddings']  # Shape: (num_chunks, encoded_dim)
         
-        # Truncate or pad to max_chunks
+        # Truncate to max_chunks
         if len(encoded_embeddings) > self.max_chunks:
             encoded_embeddings = encoded_embeddings[:self.max_chunks]
         
@@ -182,7 +182,7 @@ def collate_fn(batch):
             attention_mask = torch.cat([
                 torch.ones(num_chunks),
                 torch.zeros(max_num_chunks - num_chunks)
-            ])
+            ], dim=0)
         else:
             padded_encodings = chunk_encodings
             attention_mask = torch.ones(num_chunks)
@@ -200,42 +200,46 @@ def collate_fn(batch):
     }
 
 
-class T5ChunkAdapter(nn.Module):
-    """T5 model with adapter layer for chunk encodings."""
+class T5ChunkEncoder(nn.Module):
+    """T5 model with projection layer for chunk encodings. Only encoder is finetuned."""
     
     def __init__(
         self,
         t5_model_name: str,
         encoded_dim: int,
-        adapter_hidden_dim: int
+        freeze_decoder: bool = True
     ):
-        """Initialize T5 adapter model.
+        """Initialize T5 chunk encoder model.
         
         Args:
             t5_model_name: Name of the T5 model.
             encoded_dim: Dimension of encoded chunks.
-            adapter_hidden_dim: Hidden dimension for adapter.
+            freeze_decoder: Whether to freeze decoder parameters.
         """
-        super(T5ChunkAdapter, self).__init__()
+        super(T5ChunkEncoder, self).__init__()
         
         self.t5 = T5ForConditionalGeneration.from_pretrained(t5_model_name)
         self.t5_hidden_dim = self.t5.config.d_model
         
-        # Adapter layer: project encoded_dim -> t5_hidden_dim
-        self.adapter = nn.Sequential(
-            nn.Linear(encoded_dim, adapter_hidden_dim),
-            nn.LayerNorm(adapter_hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(adapter_hidden_dim, self.t5_hidden_dim),
-            nn.LayerNorm(self.t5_hidden_dim)
-        )
+        # Simple projection layer: encoded_dim -> t5_hidden_dim
+        self.projection = nn.Linear(encoded_dim, self.t5_hidden_dim)
         
-        logger.info(f"Initialized T5ChunkAdapter with {t5_model_name}")
-        logger.info(f"  - T5 hidden dim: {self.t5_hidden_dim}")
-        logger.info(f"  - Encoded dim: {encoded_dim}")
-        logger.info(f"  - Adapter hidden dim: {adapter_hidden_dim}")
-        logger.info(f"  - Full model fine-tuning enabled")
+        # Freeze decoder if specified
+        if freeze_decoder:
+            logger.info("Freezing T5 decoder parameters...")
+            for param in self.t5.decoder.parameters():
+                param.requires_grad = False
+            
+            # Also freeze lm_head
+            for param in self.t5.lm_head.parameters():
+                param.requires_grad = False
+        
+        # Log trainable parameters
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        logger.info(f"Total parameters: {total_params:,}")
+        logger.info(f"Trainable parameters: {trainable_params:,}")
+        logger.info(f"Frozen parameters: {total_params - trainable_params:,}")
     
     def forward(
         self,
@@ -249,28 +253,31 @@ class T5ChunkAdapter(nn.Module):
         Args:
             chunk_encodings: (batch, num_chunks, encoded_dim)
             chunk_attention_mask: (batch, num_chunks)
-            target_ids: (batch, seq_len)
-            target_attention_mask: (batch, seq_len)
+            target_ids: (batch, target_length)
+            target_attention_mask: (batch, target_length)
+            
+        Returns:
+            Loss and logits.
         """
-        batch_size, num_chunks, _ = chunk_encodings.shape
+        # Project chunk encodings to T5 embedding space
+        encoder_hidden_states = self.projection(chunk_encodings)  # (batch, num_chunks, t5_hidden_dim)
         
-        # Project chunk encodings to T5 hidden dim
-        encoder_hidden_states = self.adapter(chunk_encodings)  # (batch, num_chunks, t5_hidden_dim)
-        
-        # Prepare labels (replace padding token id with -100)
-        labels = target_ids.clone()
-        labels[target_attention_mask == 0] = -100
-        
-        # Create proper encoder outputs object
+        # Create encoder outputs
         encoder_outputs = BaseModelOutput(
             last_hidden_state=encoder_hidden_states
         )
         
-        # Forward through T5 with custom encoder hidden states
+        # Prepare decoder inputs (shift target_ids right)
+        decoder_input_ids = self.t5._shift_right(target_ids)
+        
+        # Forward through decoder
         outputs = self.t5(
             encoder_outputs=encoder_outputs,
             attention_mask=chunk_attention_mask,
-            labels=labels
+            decoder_input_ids=decoder_input_ids,
+            decoder_attention_mask=target_attention_mask,
+            labels=target_ids,
+            return_dict=True
         )
         
         return outputs
@@ -279,47 +286,50 @@ class T5ChunkAdapter(nn.Module):
         self,
         chunk_encodings: torch.Tensor,
         chunk_attention_mask: torch.Tensor,
-        max_length: int = 128,
-        num_beams: int = 4,
+        max_length: int = 150,
+        num_beams: int = 6,
         repetition_penalty: float = 2.5,
         length_penalty: float = 1.0,
         no_repeat_ngram_size: int = 3,
         min_length: int = 20
     ):
-        """Generate summaries.
+        """Generate summaries from chunk encodings.
         
         Args:
             chunk_encodings: (batch, num_chunks, encoded_dim)
             chunk_attention_mask: (batch, num_chunks)
             max_length: Maximum generation length.
             num_beams: Number of beams for beam search.
-            repetition_penalty: Penalty for repeating tokens.
-            length_penalty: Penalty for longer sequences.
-            no_repeat_ngram_size: Size of n-grams that cannot be repeated.
+            repetition_penalty: Repetition penalty.
+            length_penalty: Length penalty.
+            no_repeat_ngram_size: No repeat n-gram size.
             min_length: Minimum generation length.
+            
+        Returns:
+            Generated token IDs.
         """
-        # Project chunk encodings to T5 hidden dim
-        encoder_hidden_states = self.adapter(chunk_encodings)
+        # Project chunk encodings to T5 embedding space
+        encoder_hidden_states = self.projection(chunk_encodings)
         
-        # Create proper encoder outputs object
+        # Create encoder outputs
         encoder_outputs = BaseModelOutput(
             last_hidden_state=encoder_hidden_states
         )
         
         # Generate
-        outputs = self.t5.generate(
+        generated_ids = self.t5.generate(
             encoder_outputs=encoder_outputs,
             attention_mask=chunk_attention_mask,
             max_length=max_length,
             min_length=min_length,
             num_beams=num_beams,
-            early_stopping=True,
             repetition_penalty=repetition_penalty,
             length_penalty=length_penalty,
-            no_repeat_ngram_size=no_repeat_ngram_size
+            no_repeat_ngram_size=no_repeat_ngram_size,
+            early_stopping=True
         )
         
-        return outputs
+        return generated_ids
 
 
 def set_seed(seed: int):
@@ -371,17 +381,17 @@ def compute_metrics(predictions: List[str], references: List[str]) -> Dict[str, 
 
 
 def evaluate_model(
-    model: T5ChunkAdapter,
+    model: T5ChunkEncoder,
     dataloader: DataLoader,
     tokenizer: T5Tokenizer,
-    config: T5AdapterConfig,
+    config: T5FullConfig,
     accelerator: Accelerator,
     desc: str = "Evaluation"
 ) -> Tuple[Dict[str, float], List[str], List[str]]:
     """Evaluate model on a dataset.
     
     Args:
-        model: T5 adapter model.
+        model: T5 chunk encoder model.
         dataloader: DataLoader for evaluation.
         tokenizer: T5 tokenizer.
         config: Configuration.
@@ -399,8 +409,8 @@ def evaluate_model(
     
     with torch.no_grad():
         for batch in eval_pbar:
-            chunk_encodings = batch['chunk_encodings'].to(accelerator.device)
-            chunk_attention_mask = batch['chunk_attention_mask'].to(accelerator.device)
+            chunk_encodings = batch['chunk_encodings']
+            chunk_attention_mask = batch['chunk_attention_mask']
             target_texts = batch['target_texts']
             
             # Generate
@@ -415,7 +425,7 @@ def evaluate_model(
                 no_repeat_ngram_size=config.no_repeat_ngram_size
             )
             
-            # Decode
+            # Decode predictions
             predictions = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
             
             all_predictions.extend(predictions)
@@ -428,18 +438,18 @@ def evaluate_model(
 
 
 def train_model(
-    model: T5ChunkAdapter,
+    model: T5ChunkEncoder,
     train_dataloader: DataLoader,
     val_dataloader: DataLoader,
     tokenizer: T5Tokenizer,
-    config: T5AdapterConfig,
+    config: T5FullConfig,
     accelerator: Accelerator,
     log_file: Path
-) -> T5ChunkAdapter:
-    """Train the T5 adapter model.
+) -> T5ChunkEncoder:
+    """Train the T5 chunk encoder model.
     
     Args:
-        model: T5 adapter model.
+        model: T5 chunk encoder model.
         train_dataloader: Training dataloader.
         val_dataloader: Validation dataloader.
         tokenizer: T5 tokenizer.
@@ -450,9 +460,10 @@ def train_model(
     Returns:
         Trained model.
     """
-    # Optimizer
+    # Optimizer (only optimize parameters that require grad)
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
     optimizer = optim.AdamW(
-        model.parameters(),
+        trainable_params,
         lr=config.learning_rate,
         weight_decay=config.weight_decay
     )
@@ -477,32 +488,35 @@ def train_model(
     global_step = 0
     
     if accelerator.is_main_process:
-        with open(log_file, 'a') as f:
-            f.write(f"\n{'='*80}\n")
-            f.write(f"Training started at {datetime.now().isoformat()}\n")
-            f.write(f"{'='*80}\n")
-            f.write(f"Configuration:\n{json.dumps(config.__dict__, indent=2)}\n")
-            f.write(f"{'='*80}\n\n")
+        logger.info("Starting training...")
+        logger.info(f"Number of training steps: {num_training_steps}")
+        logger.info(f"Number of epochs: {config.num_epochs}")
+        logger.info(f"Batch size: {config.batch_size}")
+        logger.info(f"Gradient accumulation steps: {config.gradient_accumulation_steps}")
     
     for epoch in range(config.num_epochs):
-        # Training phase
         model.train()
-        train_loss = 0.0
-        num_train_batches = 0
+        epoch_loss = 0.0
+        num_batches = 0
         
         train_pbar = tqdm(
             train_dataloader,
-            desc=f"Epoch {epoch+1}/{config.num_epochs} [Train]",
+            desc=f"Epoch {epoch + 1}/{config.num_epochs}",
             disable=not accelerator.is_main_process
         )
         
-        for batch_idx, batch in enumerate(train_pbar):
+        for step, batch in enumerate(train_pbar):
+            chunk_encodings = batch['chunk_encodings']
+            chunk_attention_mask = batch['chunk_attention_mask']
+            target_ids = batch['target_ids']
+            target_attention_mask = batch['target_attention_mask']
+            
             # Forward pass
             outputs = model(
-                chunk_encodings=batch['chunk_encodings'],
-                chunk_attention_mask=batch['chunk_attention_mask'],
-                target_ids=batch['target_ids'],
-                target_attention_mask=batch['target_attention_mask']
+                chunk_encodings=chunk_encodings,
+                chunk_attention_mask=chunk_attention_mask,
+                target_ids=target_ids,
+                target_attention_mask=target_attention_mask
             )
             
             loss = outputs.loss / config.gradient_accumulation_steps
@@ -510,148 +524,120 @@ def train_model(
             # Backward pass
             accelerator.backward(loss)
             
-            # Update parameters
-            if (batch_idx + 1) % config.gradient_accumulation_steps == 0:
+            # Update weights
+            if (step + 1) % config.gradient_accumulation_steps == 0:
                 accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
                 global_step += 1
             
-            train_loss += loss.item() * config.gradient_accumulation_steps
-            num_train_batches += 1
+            epoch_loss += loss.item() * config.gradient_accumulation_steps
+            num_batches += 1
             
+            # Update progress bar
             train_pbar.set_postfix({
-                'loss': loss.item() * config.gradient_accumulation_steps,
-                'lr': scheduler.get_last_lr()[0]
+                'loss': f"{loss.item() * config.gradient_accumulation_steps:.4f}",
+                'lr': f"{scheduler.get_last_lr()[0]:.2e}"
             })
-        
-        avg_train_loss = train_loss / num_train_batches
-        
-        # Validation phase
-        model.eval()
-        val_loss = 0.0
-        num_val_batches = 0
-        
-        val_pbar = tqdm(
-            val_dataloader,
-            desc=f"Epoch {epoch+1}/{config.num_epochs} [Val Loss]",
-            disable=not accelerator.is_main_process
-        )
-        
-        with torch.no_grad():
-            for batch in val_pbar:
-                outputs = model(
-                    chunk_encodings=batch['chunk_encodings'],
-                    chunk_attention_mask=batch['chunk_attention_mask'],
-                    target_ids=batch['target_ids'],
-                    target_attention_mask=batch['target_attention_mask']
+            
+            # Periodic evaluation
+            if global_step > 0 and global_step % config.eval_every_n_steps == 0:
+                if accelerator.is_main_process:
+                    logger.info(f"\nRunning evaluation at step {global_step}...")
+                
+                val_metrics, _, _ = evaluate_model(
+                    accelerator.unwrap_model(model),
+                    val_dataloader,
+                    tokenizer,
+                    config,
+                    accelerator,
+                    desc="Validation"
                 )
                 
-                loss = outputs.loss
-                val_loss += loss.item()
-                num_val_batches += 1
+                if accelerator.is_main_process:
+                    logger.info(f"Step {global_step} Validation Metrics:")
+                    for metric_name, metric_value in val_metrics.items():
+                        logger.info(f"  {metric_name}: {metric_value:.4f}")
                 
-                val_pbar.set_postfix({'val_loss': loss.item()})
+                model.train()
         
-        avg_val_loss = val_loss / num_val_batches
+        # End of epoch
+        avg_epoch_loss = epoch_loss / num_batches
         
-        # Evaluate with metrics
         if accelerator.is_main_process:
-            logger.info(f"\nEvaluating with ROUGE and BERTScore...")
+            logger.info(f"\nEpoch {epoch + 1} completed. Average loss: {avg_epoch_loss:.4f}")
+            logger.info("Running validation...")
         
-        val_metrics, val_predictions, val_references = evaluate_model(
+        # Validation
+        val_metrics, val_preds, val_refs = evaluate_model(
             accelerator.unwrap_model(model),
             val_dataloader,
             tokenizer,
             config,
             accelerator,
-            desc=f"Epoch {epoch+1} [Val Metrics]"
+            desc="Validation"
         )
         
-        # Log results
         if accelerator.is_main_process:
-            log_msg = (
-                f"\nEpoch {epoch+1}/{config.num_epochs}\n"
-                f"  Train Loss: {avg_train_loss:.6f}\n"
-                f"  Val Loss: {avg_val_loss:.6f}\n"
-                f"  ROUGE-1: {val_metrics['rouge1']:.4f}\n"
-                f"  ROUGE-2: {val_metrics['rouge2']:.4f}\n"
-                f"  ROUGE-L: {val_metrics['rougeL']:.4f}\n"
-                f"  BERTScore F1: {val_metrics['bertscore_f1']:.4f}\n"
-            )
-            logger.info(log_msg)
+            logger.info(f"Epoch {epoch + 1} Validation Metrics:")
+            for metric_name, metric_value in val_metrics.items():
+                logger.info(f"  {metric_name}: {metric_value:.4f}")
             
-            with open(log_file, 'a') as f:
-                f.write(log_msg + "\n")
+            # Save checkpoint if best model
+            val_rouge_avg = (val_metrics['rouge1'] + val_metrics['rouge2'] + val_metrics['rougeL']) / 3
             
-            # Log 5 random sample predictions
-            if len(val_predictions) >= 5:
-                import random
-                random_indices = random.sample(range(len(val_predictions)), 5)
+            if val_rouge_avg > best_val_rouge:
+                best_val_rouge = val_rouge_avg
+                best_val_loss = avg_epoch_loss
+                patience_counter = 0
                 
-                sample_log = f"\nSample Predictions (Epoch {epoch+1}):\n"
-                sample_log += "-" * 50 + "\n"
+                logger.info(f"New best model! Average ROUGE: {val_rouge_avg:.4f}")
                 
-                for i, idx in enumerate(random_indices):
-                    pred = val_predictions[idx]
-                    ref = val_references[idx]
-                    sample_log += f"Sample {i+1}:\n"
-                    sample_log += f"  Predicted: {pred}\n"
-                    sample_log += f"  Reference: {ref}\n"
-                    sample_log += "\n"
+                # Save model
+                best_model_dir = Path(config.output_dir) / "best_model"
+                best_model_dir.mkdir(parents=True, exist_ok=True)
                 
-                logger.info(sample_log)
-                with open(log_file, 'a') as f:
-                    f.write(sample_log)
-        
-        # Early stopping based on ROUGE-L
-        val_rouge = val_metrics['rougeL']
-        if val_rouge > best_val_rouge:
-            best_val_rouge = val_rouge
-            best_val_loss = avg_val_loss
-            patience_counter = 0
-            
-            # Save best model
-            if accelerator.is_main_process:
-                best_model_path = Path(config.output_dir) / "best_model"
-                best_model_path.mkdir(parents=True, exist_ok=True)
+                torch.save(
+                    accelerator.unwrap_model(model).state_dict(),
+                    best_model_dir / "model.pt"
+                )
                 
-                unwrapped_model = accelerator.unwrap_model(model)
-                torch.save(unwrapped_model.state_dict(), best_model_path / "model.pt")
-                tokenizer.save_pretrained(best_model_path)
+                # Save tokenizer
+                tokenizer.save_pretrained(best_model_dir)
                 
-                with open(best_model_path / "config.json", 'w') as f:
-                    json.dump(config.__dict__, f, indent=2)
+                # Save config
+                with open(best_model_dir / "config.json", 'w') as f:
+                    json.dump(vars(config), f, indent=2)
                 
-                logger.info(f"Saved best model with ROUGE-L: {best_val_rouge:.4f}")
+                logger.info(f"Model saved to {best_model_dir}")
                 
-                with open(log_file, 'a') as f:
-                    f.write(f"Saved best model at epoch {epoch+1} with ROUGE-L: {best_val_rouge:.4f}\n\n")
-        else:
-            patience_counter += 1
-            if patience_counter >= config.early_stopping_patience:
-                if accelerator.is_main_process:
-                    logger.info(f"Early stopping triggered after {epoch+1} epochs")
-                    with open(log_file, 'a') as f:
-                        f.write(f"Early stopping triggered after {epoch+1} epochs\n\n")
-                break
+                # Save sample predictions
+                with open(best_model_dir / "sample_predictions.txt", 'w') as f:
+                    for i in range(min(5, len(val_preds))):
+                        f.write(f"=== Example {i + 1} ===\n")
+                        f.write(f"Reference: {val_refs[i]}\n")
+                        f.write(f"Prediction: {val_preds[i]}\n\n")
+            else:
+                patience_counter += 1
+                logger.info(f"No improvement. Patience: {patience_counter}/{config.early_stopping_patience}")
+                
+                if patience_counter >= config.early_stopping_patience:
+                    logger.info("Early stopping triggered!")
+                    break
         
         accelerator.wait_for_everyone()
     
     if accelerator.is_main_process:
-        with open(log_file, 'a') as f:
-            f.write(f"\n{'='*80}\n")
-            f.write(f"Training completed at {datetime.now().isoformat()}\n")
-            f.write(f"Best validation ROUGE-L: {best_val_rouge:.4f}\n")
-            f.write(f"Best validation loss: {best_val_loss:.6f}\n")
-            f.write(f"{'='*80}\n\n")
+        logger.info("Training completed!")
+        logger.info(f"Best validation ROUGE (avg): {best_val_rouge:.4f}")
+        logger.info(f"Best validation loss: {best_val_loss:.4f}")
     
     return model
 
 
 def evaluate_finetuned(
-    config: T5AdapterConfig,
+    config: T5FullConfig,
     accelerator: Accelerator,
     log_file: Path
 ):
@@ -663,24 +649,20 @@ def evaluate_finetuned(
         log_file: Path to log file.
     """
     if accelerator.is_main_process:
-        logger.info("\n" + "="*80)
-        logger.info("Evaluating Fine-tuned Model on Test Set")
-        logger.info("="*80)
+        logger.info("=" * 50)
+        logger.info("Evaluating fine-tuned model on test set")
     
     # Load test data
     test_data_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
     if not test_data_path.exists():
-        if accelerator.is_main_process:
-            logger.error(f"Test data not found: {test_data_path}")
+        logger.error(f"Test data not found at {test_data_path}")
         return
     
     # Check if model exists
     best_model_path = Path(config.output_dir) / "best_model" / "model.pt"
     if not best_model_path.exists():
-        if accelerator.is_main_process:
-            logger.error(f"Fine-tuned model not found: {best_model_path}")
-            with open(log_file, 'a') as f:
-                f.write(f"ERROR: Fine-tuned model not found at {best_model_path}\n")
+        logger.error(f"Fine-tuned model not found at {best_model_path}")
+        logger.error("Please train the model first!")
         return
     
     # Initialize tokenizer
@@ -703,14 +685,14 @@ def evaluate_finetuned(
     )
     
     # Load fine-tuned model
-    finetuned_model = T5ChunkAdapter(
+    finetuned_model = T5ChunkEncoder(
         t5_model_name=config.t5_model_name,
         encoded_dim=config.encoded_dim,
-        adapter_hidden_dim=config.adapter_hidden_dim
+        freeze_decoder=config.freeze_decoder
     )
     
     if accelerator.is_main_process:
-        logger.info(f"Loading model from {best_model_path}")
+        logger.info(f"Loading fine-tuned model from {best_model_path}")
     
     finetuned_model.load_state_dict(torch.load(best_model_path, map_location='cpu'))
     finetuned_model = finetuned_model.to(accelerator.device)
@@ -729,39 +711,39 @@ def evaluate_finetuned(
     )
     
     if accelerator.is_main_process:
-        test_log = (
-            f"\nTest Set Results:\n"
-            f"  ROUGE-1: {test_metrics['rouge1']:.4f}\n"
-            f"  ROUGE-2: {test_metrics['rouge2']:.4f}\n"
-            f"  ROUGE-L: {test_metrics['rougeL']:.4f}\n"
-            f"  BERTScore Precision: {test_metrics['bertscore_precision']:.4f}\n"
-            f"  BERTScore Recall: {test_metrics['bertscore_recall']:.4f}\n"
-            f"  BERTScore F1: {test_metrics['bertscore_f1']:.4f}\n"
-        )
-        logger.info(test_log)
-        
-        with open(log_file, 'a') as f:
-            f.write("\n" + "="*80 + "\n")
-            f.write("TEST SET EVALUATION\n")
-            f.write("="*80 + "\n")
-            f.write(test_log + "\n")
+        logger.info("\n" + "=" * 50)
+        logger.info("Test Set Results (Fine-tuned Model):")
+        logger.info("=" * 50)
+        for metric_name, metric_value in test_metrics.items():
+            logger.info(f"{metric_name}: {metric_value:.4f}")
         
         # Save test results
-        test_results_path = Path(config.output_dir) / "test_results.json"
-        with open(test_results_path, 'w') as f:
+        results_path = Path(config.output_dir) / "test_results.json"
+        with open(results_path, 'w') as f:
             json.dump(test_metrics, f, indent=2)
-        logger.info(f"Saved test results to {test_results_path}")
+        
+        logger.info(f"\nTest results saved to {results_path}")
+        
+        # Save sample predictions
+        sample_preds_path = Path(config.output_dir) / "test_sample_predictions.txt"
+        with open(sample_preds_path, 'w') as f:
+            for i in range(min(10, len(test_preds))):
+                f.write(f"=== Test Example {i + 1} ===\n")
+                f.write(f"Reference: {test_refs[i]}\n")
+                f.write(f"Prediction: {test_preds[i]}\n\n")
+        
+        logger.info(f"Sample predictions saved to {sample_preds_path}")
 
 
 def evaluate_base_model(
     base_model: T5ForConditionalGeneration,
     dataloader: DataLoader,
     tokenizer: T5Tokenizer,
-    config: T5AdapterConfig,
+    config: T5FullConfig,
     accelerator: Accelerator,
     desc: str = "Base Model Evaluation"
 ) -> Tuple[Dict[str, float], List[str], List[str]]:
-    """Evaluate a plain base T5 model (no adapter) using full document text as input.
+    """Evaluate a plain base T5 model (no finetuning) using full document text as input.
     
     Args:
         base_model: Base T5 model.
@@ -785,18 +767,14 @@ def evaluate_base_model(
     
     with torch.no_grad():
         for batch in eval_pbar:
-            # Get document texts and target texts from batch
             document_texts = batch['document_texts']
             target_texts = batch['target_texts']
             
-            # Prepare inputs with "summarize: " prefix for T5
-            inputs = ["summarize: " + doc_text[:2000] for doc_text in document_texts]  # Truncate long docs
-            
-            # Tokenize inputs
+            # Tokenize document texts
             input_encodings = tokenizer(
-                inputs,
+                document_texts,
                 max_length=max_input_length,
-                padding=True,
+                padding='max_length',
                 truncation=True,
                 return_tensors='pt'
             ).to(accelerator.device)
@@ -810,10 +788,11 @@ def evaluate_base_model(
                 num_beams=config.num_beams,
                 repetition_penalty=config.repetition_penalty,
                 length_penalty=config.length_penalty,
-                no_repeat_ngram_size=config.no_repeat_ngram_size
+                no_repeat_ngram_size=config.no_repeat_ngram_size,
+                early_stopping=True
             )
             
-            # Decode
+            # Decode predictions
             predictions = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
             
             all_predictions.extend(predictions)
@@ -823,12 +802,12 @@ def evaluate_base_model(
     return metrics, all_predictions, all_references
 
 
-def compare_adapter_vs_base(
-    config: T5AdapterConfig,
+def compare_finetuned_vs_base(
+    config: T5FullConfig,
     accelerator: Accelerator,
     log_file: Path
 ):
-    """Load the finetuned adapter model and the plain base model, evaluate both on the test set, and report a comparison.
+    """Load the finetuned model and the plain base model, evaluate both on the test set, and report a comparison.
     
     Args:
         config: Configuration.
@@ -836,22 +815,18 @@ def compare_adapter_vs_base(
         log_file: Path to log file.
     """
     if accelerator.is_main_process:
-        logger.info("\n" + "="*80)
-        logger.info("Comparing finetuned adapter model vs base T5 model on test set")
-        logger.info("="*80)
+        logger.info("=" * 50)
+        logger.info("Comparing Fine-tuned Model vs Base Model")
 
     test_data_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
     if not test_data_path.exists():
-        if accelerator.is_main_process:
-            logger.error(f"Test data not found: {test_data_path}")
+        logger.error(f"Test data not found at {test_data_path}")
         return
 
     best_model_path = Path(config.output_dir) / "best_model" / "model.pt"
     if not best_model_path.exists():
-        if accelerator.is_main_process:
-            logger.error(f"Fine-tuned model not found: {best_model_path}")
-            with open(log_file, 'a') as f:
-                f.write(f"ERROR: Fine-tuned model not found at {best_model_path}\n")
+        logger.error(f"Fine-tuned model not found at {best_model_path}")
+        logger.error("Please train the model first!")
         return
 
     # Tokenizer
@@ -873,21 +848,21 @@ def compare_adapter_vs_base(
         collate_fn=collate_fn
     )
 
-    # Load finetuned adapter model
-    finetuned_model = T5ChunkAdapter(
+    # Load finetuned model
+    finetuned_model = T5ChunkEncoder(
         t5_model_name=config.t5_model_name,
         encoded_dim=config.encoded_dim,
-        adapter_hidden_dim=config.adapter_hidden_dim
+        freeze_decoder=config.freeze_decoder
     )
     if accelerator.is_main_process:
-        logger.info(f"Loading finetuned adapter model from {best_model_path}")
+        logger.info(f"Loading fine-tuned model from {best_model_path}")
 
     finetuned_model.load_state_dict(torch.load(best_model_path, map_location='cpu'))
     finetuned_model = finetuned_model.to(accelerator.device)
 
     # Load base model (plain T5)
     if accelerator.is_main_process:
-        logger.info(f"Loading base model {config.t5_model_name} for comparison")
+        logger.info(f"Loading base T5 model: {config.t5_model_name}")
 
     base_model = T5ForConditionalGeneration.from_pretrained(config.t5_model_name)
     base_model = base_model.to(accelerator.device)
@@ -907,14 +882,14 @@ def compare_adapter_vs_base(
     )
     base_dataloader = accelerator.prepare(base_dataloader)
 
-    # Evaluate finetuned adapter
-    adapter_metrics, adapter_preds, adapter_refs = evaluate_model(
+    # Evaluate finetuned model
+    finetuned_metrics, finetuned_preds, finetuned_refs = evaluate_model(
         accelerator.unwrap_model(finetuned_model),
         test_dataloader,
         tokenizer,
         config,
         accelerator,
-        desc="Adapter Model Evaluation"
+        desc="Fine-tuned Model Evaluation"
     )
 
     # Evaluate base model
@@ -929,72 +904,75 @@ def compare_adapter_vs_base(
 
     # Save and log comparison
     comparison = {
-        'adapter_metrics': adapter_metrics,
+        'finetuned_metrics': finetuned_metrics,
         'base_metrics': base_metrics,
         'max_input_length_base_model': 512
     }
 
     if accelerator.is_main_process:
-        # Create evaluations directory if it doesn't exist
-        Path("evaluations").mkdir(parents=True, exist_ok=True)
+        logger.info("\n" + "=" * 50)
+        logger.info("COMPARISON RESULTS")
+        logger.info("=" * 50)
         
-        comp_path = Path("evaluations") / "t5_adapter_vs_base_comparison.json"
-        with open(comp_path, 'w') as f:
+        # Create evaluations directory
+        evaluations_dir = Path("evaluations")
+        evaluations_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save comparison results
+        comparison_path = evaluations_dir / "t5_enc_finetuned_vs_base_comparison.json"
+        with open(comparison_path, 'w') as f:
             json.dump(comparison, f, indent=2)
-        logger.info(f"Saved adapter vs base comparison to {comp_path}")
-
-        # Print sample predictions
-        logger.info("\n" + "="*80)
-        logger.info("SAMPLE PREDICTIONS")
-        logger.info("="*80)
-        num_samples = 3
-        if len(adapter_preds) >= num_samples:
-            sample_log = ""
-            for i in range(num_samples):
-                sample_log += f"\n--- Sample {i+1} ---\n"
-                sample_log += f"Reference:\n  {adapter_refs[i]}\n\n"
-                sample_log += f"Adapter Prediction:\n  {adapter_preds[i]}\n\n"
-                sample_log += f"Base Model Prediction:\n  {base_preds[i]}\n"
-                sample_log += "-" * 80 + "\n"
-            
-            logger.info(sample_log)
-            
-            # Save sample predictions to file
-            sample_path = Path("evaluations") / "t5_sample_predictions.txt"
-            with open(sample_path, 'w') as f:
-                f.write("SAMPLE PREDICTIONS - ADAPTER VS BASE MODEL (T5)\n")
-                f.write("="*80 + "\n")
-                f.write(sample_log)
-            logger.info(f"Saved sample predictions to {sample_path}")
-
-        # Print comparison table
-        table_log = "\n" + "="*80 + "\n"
-        table_log += "ADAPTER VS BASE MODEL COMPARISON (T5)\n"
-        table_log += "="*80 + "\n"
-        table_log += f"{'Metric':<20} {'Adapter':<10} {'Base':<10} {'Difference':<10}\n"
-        table_log += "-"*60 + "\n"
-        for metric in ['rouge1', 'rouge2', 'rougeL', 'bertscore_f1', 'bertscore_precision', 'bertscore_recall']:
-            adapter_val = adapter_metrics[metric]
-            base_val = base_metrics[metric]
-            diff = adapter_val - base_val
-            table_log += f"{metric:<20} {adapter_val:<10.4f} {base_val:<10.4f} {diff:<+10.4f}\n"
-        table_log += "="*80 + "\n"
         
-        print(table_log, end="")
-
+        logger.info(f"\nComparison saved to {comparison_path}")
+        
+        # Create comparison table
+        logger.info("\nMetric Comparison:")
+        logger.info("-" * 70)
+        logger.info(f"{'Metric':<25} {'Fine-tuned':>15} {'Base':>15} {'Improvement':>15}")
+        logger.info("-" * 70)
+        
+        for metric in ['rouge1', 'rouge2', 'rougeL', 'bertscore_precision', 'bertscore_recall', 'bertscore_f1']:
+            finetuned_val = finetuned_metrics[metric]
+            base_val = base_metrics[metric]
+            improvement = ((finetuned_val - base_val) / base_val * 100) if base_val != 0 else 0
+            
+            logger.info(f"{metric:<25} {finetuned_val:>15.4f} {base_val:>15.4f} {improvement:>14.2f}%")
+        
+        logger.info("-" * 70)
+        
         # Save comparison table to file
-        table_path = Path("evaluations") / "t5_comparison_table.txt"
+        table_path = evaluations_dir / "t5_enc_comparison_table.txt"
         with open(table_path, 'w') as f:
-            f.write(table_log)
-        logger.info(f"Saved comparison table to {table_path}")
-
-        # Log to log file
-        with open(log_file, 'a') as f:
-            f.write("\n" + "="*80 + "\n")
-            f.write("ADAPTER VS BASE MODEL COMPARISON\n")
-            f.write("="*80 + "\n")
-            f.write(table_log)
-            f.write("\n")
+            f.write("COMPARISON: Fine-tuned T5 (Encoder Only) vs Base T5\n")
+            f.write("=" * 70 + "\n\n")
+            f.write(f"{'Metric':<25} {'Fine-tuned':>15} {'Base':>15} {'Improvement':>15}\n")
+            f.write("-" * 70 + "\n")
+            
+            for metric in ['rouge1', 'rouge2', 'rougeL', 'bertscore_precision', 'bertscore_recall', 'bertscore_f1']:
+                finetuned_val = finetuned_metrics[metric]
+                base_val = base_metrics[metric]
+                improvement = ((finetuned_val - base_val) / base_val * 100) if base_val != 0 else 0
+                
+                f.write(f"{metric:<25} {finetuned_val:>15.4f} {base_val:>15.4f} {improvement:>14.2f}%\n")
+            
+            f.write("-" * 70 + "\n")
+        
+        logger.info(f"Comparison table saved to {table_path}")
+        
+        # Save sample predictions from both models
+        sample_path = evaluations_dir / "t5_enc_sample_predictions.txt"
+        with open(sample_path, 'w') as f:
+            f.write("Sample Predictions: Fine-tuned vs Base Model\n")
+            f.write("=" * 70 + "\n\n")
+            
+            for i in range(min(10, len(finetuned_preds))):
+                f.write(f"=== Example {i + 1} ===\n")
+                f.write(f"Reference:\n{finetuned_refs[i]}\n\n")
+                f.write(f"Fine-tuned Model:\n{finetuned_preds[i]}\n\n")
+                f.write(f"Base Model:\n{base_preds[i]}\n\n")
+                f.write("-" * 70 + "\n\n")
+        
+        logger.info(f"Sample predictions comparison saved to {sample_path}")
 
     return comparison
 
@@ -1008,7 +986,7 @@ def main():
     )
     
     # Configuration
-    config = T5AdapterConfig()
+    config = T5FullConfig()
     
     # Initialize Accelerator with kwargs for DDP
     accelerator = Accelerator(
@@ -1019,9 +997,9 @@ def main():
     )
 
     # Command-line arguments: allow eval-only or comparison modes
-    parser = argparse.ArgumentParser(description="T5 adapter training/evaluation")
-    parser.add_argument('--eval-only', action='store_true', help='Only evaluate the saved finetuned adapter on the test set and exit')
-    parser.add_argument('--compare-base', action='store_true', help='Evaluate finetuned adapter and the plain base model and save a comparison')
+    parser = argparse.ArgumentParser(description="T5 full model (encoder) training/evaluation")
+    parser.add_argument('--eval-only', action='store_true', help='Only evaluate the saved finetuned model on the test set and exit')
+    parser.add_argument('--compare-base', action='store_true', help='Evaluate finetuned model and the plain base model and save a comparison')
     parser.add_argument('--model-path', type=str, default=None, help='Path to a saved finetuned model.pt (optional)')
     args = parser.parse_args()
     
@@ -1029,22 +1007,21 @@ def main():
     set_seed(config.seed)
     
     if accelerator.is_main_process:
-        logger.info("="*80)
-        logger.info("T5 Adapter Fine-tuning Pipeline")
-        logger.info("="*80)
-        logger.info(f"Device: {accelerator.device}")
-        logger.info(f"Number of processes: {accelerator.num_processes}")
-        logger.info(f"T5 Model: {config.t5_model_name}")
-        logger.info(f"Encoded dim: {config.encoded_dim}")
-        logger.info(f"Adapter hidden dim: {config.adapter_hidden_dim}")
-        logger.info(f"Full model fine-tuning: Enabled")
-        logger.info(f"Batch size: {config.batch_size}")
-        logger.info(f"Gradient accumulation steps: {config.gradient_accumulation_steps}")
-        logger.info(f"Epochs: {config.num_epochs}")
-        logger.info(f"Learning rate: {config.learning_rate}")
-        logger.info("="*80)
+        logger.info("=" * 50)
+        logger.info("T5 Full Model Fine-tuning (Encoder Only)")
+        logger.info("=" * 50)
+        logger.info(f"Configuration:")
+        logger.info(f"  Model: {config.t5_model_name}")
+        logger.info(f"  Encoded dim: {config.encoded_dim}")
+        logger.info(f"  Freeze decoder: {config.freeze_decoder}")
+        logger.info(f"  Batch size: {config.batch_size}")
+        logger.info(f"  Learning rate: {config.learning_rate}")
+        logger.info(f"  Number of epochs: {config.num_epochs}")
+        logger.info(f"  Max chunks per story: {config.max_chunks_per_story}")
+        logger.info(f"  Output directory: {config.output_dir}")
+        logger.info("=" * 50)
         
-        # Create output directories
+        # Create directories
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
         Path(config.logs_dir).mkdir(parents=True, exist_ok=True)
     
@@ -1052,37 +1029,32 @@ def main():
     
     # Setup log file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = Path(config.logs_dir) / f"t5_adapter_training_{timestamp}.log"
+    log_file = Path(config.logs_dir) / f"t5_full_training_{timestamp}.log"
     
     if accelerator.is_main_process:
-        with open(log_file, 'w') as f:
-            f.write(f"T5 Adapter Training Log\n")
-            f.write(f"Started at: {datetime.now().isoformat()}\n")
-            f.write(f"{'='*80}\n\n")
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(file_handler)
 
     # If user requested eval-only or comparison, run that and exit early
     if args.eval_only:
-        if accelerator.is_main_process:
-            logger.info("Running in eval-only mode")
         evaluate_finetuned(config, accelerator, log_file)
         return
 
     if args.compare_base:
-        if accelerator.is_main_process:
-            logger.info("Running comparison mode: adapter vs base model")
-        compare_adapter_vs_base(config, accelerator, log_file)
+        compare_finetuned_vs_base(config, accelerator, log_file)
         return
     
     # Load data
     if accelerator.is_main_process:
-        logger.info("\nLoading datasets...")
+        logger.info("Loading datasets...")
     
     train_data_path = Path(config.encoded_data_dir) / "train_chunks_encoded.pkl"
     val_data_path = Path(config.encoded_data_dir) / "validation_chunks_encoded.pkl"
     
     if not train_data_path.exists() or not val_data_path.exists():
-        if accelerator.is_main_process:
-            logger.error("Encoded data not found. Please run chunk_embeddings.py first.")
+        logger.error(f"Training or validation data not found!")
         return
     
     # Initialize tokenizer
@@ -1121,28 +1093,26 @@ def main():
     )
     
     if accelerator.is_main_process:
-        logger.info(f"Train samples: {len(train_dataset)}")
+        logger.info(f"Training samples: {len(train_dataset)}")
         logger.info(f"Validation samples: {len(val_dataset)}")
     
     # Initialize model
-    model = T5ChunkAdapter(
+    model = T5ChunkEncoder(
         t5_model_name=config.t5_model_name,
         encoded_dim=config.encoded_dim,
-        adapter_hidden_dim=config.adapter_hidden_dim
+        freeze_decoder=config.freeze_decoder
     )
     
     if accelerator.is_main_process:
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        logger.info(f"Total parameters: {total_params:,}")
-        logger.info(f"Trainable parameters: {trainable_params:,}")
-        logger.info(f"Percentage trainable: {(trainable_params/total_params)*100:.2f}%")
+        logger.info("Model initialized successfully")
+        logger.info(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+        logger.info(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
     
     # Train model
     if accelerator.is_main_process:
-        logger.info("\n" + "="*80)
+        logger.info("\n" + "=" * 50)
         logger.info("Starting Training")
-        logger.info("="*80)
+        logger.info("=" * 50)
     
     trained_model = train_model(
         model,
@@ -1158,29 +1128,16 @@ def main():
     
     # Evaluate fine-tuned model on test set
     if accelerator.is_main_process:
-        logger.info("\n" + "="*80)
-        logger.info("Starting Test Set Evaluation")
-        logger.info("="*80)
-        
-        # Load the best model for evaluation
-        best_model_path = Path(config.output_dir) / "best_model"
-        
-        # Re-initialize model and load state dict
-        eval_model = T5ChunkAdapter(
-            t5_model_name=config.t5_model_name,
-            encoded_dim=config.encoded_dim,
-            adapter_hidden_dim=config.adapter_hidden_dim
-        )
-        eval_model.load_state_dict(torch.load(best_model_path / "model.pt", map_location='cpu'))
-        
-        evaluate_finetuned(config, accelerator, log_file)
+        logger.info("\n" + "=" * 50)
+        logger.info("Training Complete - Evaluating on Test Set")
+        logger.info("=" * 50)
+    
+    evaluate_finetuned(config, accelerator, log_file)
     
     if accelerator.is_main_process:
-        logger.info("\n" + "="*80)
-        logger.info("Pipeline Completed Successfully!")
-        logger.info("="*80)
-        logger.info(f"Log file: {log_file}")
-        logger.info(f"Model saved in: {config.output_dir}")
+        logger.info("\n" + "=" * 50)
+        logger.info("All Done!")
+        logger.info("=" * 50)
 
 
 if __name__ == "__main__":

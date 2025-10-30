@@ -9,7 +9,7 @@ Eventually, the radio show causes so much trouble in the community that the FCC 
 Realizing he has started something huge, Mark decides it is up to him to end it. He dismantles his radio station and attaches it to his mother's old jeep, creating a mobile transmitter so his position can't be triangulated. Pursued by the police and the FCC, Nora drives the jeep around while Mark broadcasts. The harmonizer he uses to disguise his voice breaks, and with no time left to fix it, Mark decides to broadcast his final message as himself. They finally drive up to the crowd of protesting students, and Mark tells them that the world belongs to them and that they should make their own future. The police step in and arrest Mark and Nora. As they are taken away, Mark reminds the students to "talk hard." As the film ends, the voices of other students (and even one of the teachers) speak as intros for their own independent stations, which can be heard broadcasting across the country.
 
 Adapter Prediction:
-  s, the a his. and of with in ishe who' for that to on aneo theiryiising him her it but they willnmly from as "dh;andrth) are The He family at them outan,, I His both, also- where, be deher by which when myt,:hisowll, AJ’than, not you, son alinor ork, sow" this wayof brothers, en its new,, has), ky one twothe there,  ship canjonmanable
+  .  and of the, inaolyis;andhe for hiss an them their to that both as family not) with her but they is it Hisherd different books which Dutch records (yh orhom Ie on alm' native himn " my are- fromith willing new by electronic may islands out seal electronically whenedit soanow also wheremigj, deaff jamhos Islands Az flock who: Newwell), Island Iceland class among cases at well islandlaw instead lists apart non overen groupmes  me, always stillfect,onym HolotJ because  have us’ and diseases along then A Omega and control gradeami mostly generally, Vas
 
 Base Model Prediction:
   Happy Harry Hardon reminds you to eat your cereal with a fork and do your homework in the dark. nora Diniro - Oh, Miss Paige Woodward arriving. Janie - Off course. Nora - He comes on every night at ten o'clock.
@@ -21,7 +21,7 @@ Reference:
 All of the characters and lands are types used to convey the author's critique of several philosophical systems. On Tormance, most such viewpoints or ways of life are accompanied by corresponding new bodily sense organs or modifications of the same, thus each distinct Weltanschauung landscape has its corresponding sensorium.
 
 Adapter Prediction:
-  , a of the ands. his' " is that in withde on who to her foro as at an which but)’hey byiis it its family: their them they arening from him not;ly both deand alsom ( en He The newhran born His son so th hasp tlaw where she was because ).  ow be daughter - f
+  .  and of the ", are is de ina at also' her be that ashers his mayeand which but have them for His Hering control both from by with; according on an(ly has gibdvary) they their al it all along A fill not’ records she  so into through will provide dieHer new Az Vas (  because Mayo down p NovaV among
 
 Base Model Prediction:
   the project Gutenberg EBook of a Voyage to Arcturus by David Lindsay This eBook is for the use of anyone anywhere at no cost and with almost no restrictions whatsoever. you may copy it, give it away or re-use it under the terms of the Project Gutenberg License included with this eBook or online at www.gutenberg.org.
@@ -33,7 +33,7 @@ Reference:
 The content of the book concerns the difficult conditions of the work of the country children who had to eke out a poor existence far away from their parents. In spite of this account of their hard lot an optimistic kind of portrayal is predominant.
 
 Adapter Prediction:
-  s a, the. and is of inde'yo to by her hisi’ that " at annh:ow from family on Thely who for sonmt withan it asth (Jen Hor");and them they she deheing
+  and a., for of insd that is und'e as  And family from the oandh on Ho by ly. to also.; butherowy her.en with bothborn because Danhe al it babies soance(. at de..n andright an ". through back and their and hiszurral over. Az.. Bill’ andoff. usân ofika SoningV. stay: and - abel along whoi law) be two.. not áliv.  and .. which and them dietu.. mit..."..
 
 Base Model Prediction:
   the project Gutenberg EBook of Lisbeth Longfrock by Hans Aanrud is for the use of anyone anywhere at no cost and with almost no restrictions whatsoever. you may copy it, give it away or re-use it under the terms of the Project Gutenberg License included with this eBook or online at www.gutenberg.net.

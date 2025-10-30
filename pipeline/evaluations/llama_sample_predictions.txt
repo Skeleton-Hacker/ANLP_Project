@@ -3,35 +3,30 @@
 SAMPLE PREDICTIONS FROM ADAPTER MODEL
 ================================================================================
 Sample 1:
-  Predicted: wingfully,scarsonjsarsonjsioki-unc0-unc0-unc0-justangrhisopaintersoarrrrhinjspirrhristoangåjolstonessincjsiethrisopaintsincosincopostarsonstonjsincstonaspirunskonstonic9,9, 10,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9
-  Reference:  The play is set in Bath in the 18th century, a town that was legendary for conspicuous consumption and fashion at the time. Wealthy, fashionable people went there to "take the waters", which were believed to have healing properties. Bath was much less exclusive than London, and hence it provides an ideal setting for the characters.
-The plot centres on the two young lovers, Lydia and Jack. Lydia, who reads a lot of popular novels of the time, wants a purely romantic love affair. To court her, Jack pretends to be "Ensign Beverley", a poor officer. Lydia is enthralled with the idea of eloping with a poor soldier in spite of the objections of her guardian, Mrs. Malaprop, a moralistic widow. Mrs. Malaprop is the chief comic figure of the play, thanks to her continual misuse of words that sound like the words she intends to use, but mean something completely different. (The term malapropism was coined in reference to the character.)
-Lydia has two other suitors: Bob Acres (a somewhat buffoonish country gentleman), and Sir Lucius O'Trigger, an impoverished and combative Irish gentleman. Sir Lucius pays Lucy to carry love notes between him and Lydia (who uses the name "Delia"), but Lucy is swindling him: "Delia" is actually Mrs. Malaprop.
-As the play opens, Sir Anthony arrives suddenly in Bath. He has arranged a marriage for Jack, but Jack demurs, saying he is in love already. They quarrel violently. But Jack soon learns through the gossip of Lucy and Fag that the marriage arranged by Sir Anthony is, in fact, with Lydia. He makes a great show of submission to his father, and is presented to Lydia with Mrs. Malaprop's blessing. Jack confides to Lydia that he is only posing as Sir Anthony's son. She annoys Mrs. Malaprop by loudly professing her eternal devotion to "Beverley" while rejecting "Jack Absolute".
-Jack's friend Faulkland is in love with Julia, but he suffers from jealous suspicion. He is constantly fretting himself about her fidelity. Faulkland and Julia quarrel foolishly, making elaborate and high-flown speeches about true love that satirise the romantic dramas of the period.
-Bob Acres tells Sir Lucius that another man ("Beverley") is courting the lady of Acres' choice (Lydia, though Sir Lucius does not know this). Sir Lucius immediately declares that Acres must challenge "Beverley" to a duel and kill him. Acres goes along, and writes out a challenge note â despite his own rather more pacifist feelings, and the profound misgivings of his servant David. Sir Lucius leaves, Jack arrives, and Acres tells him of his intent. Jack agrees to deliver the note to "Beverley", but declines to be Acres' second.
-Mrs. Malaprop again presents Jack to Lydia, but this time with Sir Anthony present, exposing Jack's pose as "Beverley". Lydia is enraged by the puncturing of her romantic dreams, and spurns Jack contemptuously.
-Sir Lucius has also learned of the proposed marriage of Jack and Lydia, and determines to challenge Jack. He meets Jack, who, smarting from Lydia's rejection, agrees to fight him without even knowing the reason. They will meet at the same time as Acres is scheduled to fight "Beverley".
-At the duelling ground, Acres is very reluctant to fight, but Sir Lucius will have no shirking. Jack and Faulkland arrive. Acres learns that "Beverley" is actually his friend Jack, and begs off from their duel. However, Jack is quite willing to fight Sir Lucius, and they cross swords.
-David informs Mrs. Malaprop, Lydia, Julia, and Sir Anthony of the dueling, and they all rush off to stop it. Sir Lucius explains the cause of his challenge, but Lydia denies any connection to him, and admits her love for Jack. Mrs. Malaprop announces that she is Delia, but Sir Lucius recoils in horror, realising that he has been hoaxed. Sir Anthony consoles Mrs. Malaprop, Julia is reconciled to Faulkland, and Acres invites everyone to a party.
+  Predicted: opophocjsophetopethigethicstonethigethostricstonethigethigethicstonicstonoposthingga,orstricoposticoposticostopsterethigethicstonicstonopost,TheOppiethisops,Forston,On,TheOppo,Injopost,On 1,On,divibokstopped,Countstonopopopaintstonopopopaintstonopsthopsthopsthopsthopsthopsthopsthopsthopsthopsthopsthopsthopstonopopopolliguestsincopost
+  Reference:  Anne Shirley has now been married to Gilbert Blythe for 15 years, and the couple have six children: Jem, Walter, Nan, Di, Shirley, and Rilla.
+After a trip to London, Anne returns to the news that a new minister has arrived in Glen St. Mary. John Meredith is a widower with four young children: Gerald (Jerry), Faith, Una, and Thomas Carlyle (Carl). The children have not been properly brought up since the death of their mother, with only their father (who is easily absorbed by matters of theology) to parent them. The children are considered wild and mischievous by many of the families in the village (who tend only to hear about the Meredith children when they have gotten into some kind of scrape), causing them to question Mr. Meredith's parenting skills and his suitability as a minister.
+For most of the book, only the Blythes know of the Meredith children's loyalty and kindness. They rescue an orphaned girl, Mary Vance, from starvation, and Una finds a home for her with Mrs. Marshall Elliott. When the children get into trouble, Faith sometimes tries to explain their behavior to the townsfolk, which generally causes an even bigger scandal.
+The Merediths, Blythes, and Mary Vance often play in a hollow called Rainbow Valley, which becomes a gathering place for the children in the book. Jem Blythe tries to help the Merediths behave better by forming the "Good-Conduct Club," in which the Merediths punish themselves for misdeeds. Their self-imposed punishments lead to Carl becoming very ill with pneumonia after spending hours in a graveyard on a wet night, and to Una fainting in church after fasting all day. When this happens, John Meredith is wracked with guilt over his failings as a father.
+Mr. Meredith realizes that he should marry again and give the children a mother, though he has always thought he will never love anyone again as he did his late wife. He is surprised to find that he has fallen in love with Rosemary West, a woman in her late thirties who lives with her sister Ellen, who is ten years older. John proposes marriage to Rosemary, but Ellen forbids Rosemary from accepting, as years earlier they had promised each other never to leave the other following the deaths of their parents. However, Ellen eventually reunites with her childhood beau, Norman Douglas, and asks Rosemary to release her from her promise so she can marry Norman. Rosemary agrees, but now thinks that John Meredith hates her.
+Una overhears her father expressing feelings for Rosemary and goes to ask Rosemary to marry her father despite her misgivings about stepmothers, who Mary Vance has told her are always mean. Rosemary sets her mind at ease and agrees to speak to John Meredith again. They become engaged, and Rosemary and Ellen plan a double wedding in the fall.
 
 Sample 2:
-  Predicted: opophocjsophocjsotopophocjsangethostronethigethopethopethostronsthopethopethajanthopethicstonized,fronstranopethopethisstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronforce,fronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstronstron
-  Reference:  Sethe is a former slave living on the outskirts of Cincinnati shortly after the Civil War. An angry poltergeist terrorizes Sethe and her three children, causing her two sons to run away forever. Eight years later, Sethe (Oprah Winfrey) lives alone with her daughter, Denver (Kimberly Elise). Paul D. (Danny Glover), an old friend from Sweet Home, the plantation Sethe had escaped from years earlier, finds Sethe's home, where he drives off the angry spirit. Afterwards, Paul D. proposes that he should stay and Sethe responds favorably. Shortly after Paul D. moves in, a clean, mentally handicapped young woman (Thandie Newton) named Beloved stumbles into Sethe's yard and also stays with them.
-Denver is initially happy to have Beloved around, but learns that she is Sethe's reincarnated daughter. Nonetheless, she chooses not to divulge Beloved's origins to Sethe. One night, Beloved, aware that Paul D. dislikes her, immobilizes him with a spell and proceeds to assault him sexually. Paul D. resolves to tell Sethe what happened, but instead tells what has happened to a co-worker, Stamp Paid (Albert Hall). Stamp Paid, who has known Sethe for many years, pulls a newspaper clipping featuring Sethe and tells her story to the illiterate Paul D.
-Years ago, Sethe was raped by the nephews of Schoolteacher, the owner of Sweet Home. She complained to Mrs. Garner, Schoolteacher's sister-in-law, who confronted him. In retaliation, Schoolteacher and his nephews whip Sethe. Heavily pregnant with her fourth child, Sethe planned to escape. Her other children were sent off earlier to live with Baby Suggs, Sethe's mother-in-law, but Sethe stayed behind to look for her husband, Halle (Hill Harper) Sethe was assaulted while searching for him in the barn. The Schoolteacher's nephews held her down, raped her and forcibly took her breast milk.
-When Halle failed to comply, Sethe ran off alone. She crossed paths with Amy Denver, a white girl who treated Sethe's injuries and delivered Sethe's child, whom Sethe named Denver after Amy. Sethe eventually reached Baby Suggs' home, but her initial happiness was short-lived when Schoolteacher came to claim Sethe and her children. In desperation, Sethe slits her older daughter's throat, and attempts to kill her other children. Stamp Paid manages to stop her and the disgusted Schoolteacher departs.
-Paul D., horrified by the revelation and suddenly understanding the origin of the poltergeist, confronts Sethe. Sethe justifies her decision without apology, claiming that her children would be better off dead than enslaved. Paul D. departs shortly thereafter in protest. After Paul D.'s departure, Sethe realizes that Beloved is the reincarnation of her dead daughter. Feeling elated yet guilty, Sethe spoils Beloved with elaborate gifts while neglecting Denver. Beloved soon throws a destructive tantrum and her malevolent presence causes living conditions in the house to deteriorate. The women live in squalor and Sethe is unable to work. Denver becomes depressed yet, inspired by a memory of her grandmother's confidence in her, she eventually musters the courage to leave the house and seek employment.
-After Denver attains employment, women from the local church visit Sethe's house at the request of her new co-worker to perform an exorcism. The women from the church comfort the family, and they are praying and singing loudly when Denver's new employer arrives to pick her up for work. Sethe sees him and, reminded of Schoolteacher's arrival, tries to attack him with an icepick, but is subdued by Denver and the women. During the commotion, Beloved disappears completely and Sethe, freed from Beloved's grip, becomes permanently bedridden.
-Some months later, Paul D. encounters Denver at the marketplace. He notices she has transformed into a confident and mature young woman. When Paul D. later arrives at Sethe's house, he finds her suffering from a deep malaise. He assures Sethe that he and Denver will now take care of her. Sethe tells him that she doesn't see the point, as Beloved, her "best thing", is gone. Paul D. disagrees, telling Sethe that she herself is her own best thing.
+  Predicted: ,10,9,10,9,10,9,10,9,10,9,10,9,9,10,9,10,9,9,10,10,9,10,9,10,9,10,9,10,9,9,9,10,10,9,9,10,9,9,10,9,10,10,9,9,10,10,9,9,10,9,9,10,9-10,10,9,9,10,10,9-10,3549,3549,3549,3549,3549
+  Reference:  Like The Call of the Wild, The Sea Wolf tells the story of a soft, domesticated protagonist, in this novel's case an intellectual man named Humphrey van Weyden, forced to become tough and self-reliant by exposure to cruelty and brutality. The story starts with him aboard a San Francisco ferry, called Martinez, which collides with another ship in the fog and sinks. He is set adrift in the Bay, eventually being picked up by Wolf Larsen. Larsen is the captain of a seal-hunting schooner, the Ghost. Brutal and cynical, yet also highly intelligent and intellectual (though highly biased in his opinions, as he was self-taught), he rules over his ship and terrorizes the crew with the aid of his exceptionally great physical strength. Van Weyden adequately describes him as an individualist, hedonist, and materialist. Larsen does not believe in the immortality of the soul, he finds no meaning in his life save for survival and pleasure and has come to despise all human life and deny its value. Being interested in someone capable of intellectual disputes, he somewhat takes care of Van Weyden, whom he calls 'Hump', while forcing him to become a cabin boy, do menial work, and learn to fight to protect himself from a brutal crew.
+A key event in the story is an attempted mutiny against Wolf Larsen by several members of the crew. The organizers of the mutiny are Leach and Johnson. Johnson had previously been beaten severely by Larsen, and Leach had been punched earlier while being forced to become a boat-puller, motivating the two. The first attempt is by sending Larsen overboard; however, he manages to climb back onto the ship. Searching for his assailant, he ventures into the sleeping quarters, located beneath the main deck, the only exit being a ladder. Several, at least seven men, take part in the mutiny and attack Larsen. Larsen however, demonstrating his inhuman endurance, strength, and conviction, manages to fight his way through the crew, climb the ladder with several men hanging off him, and escape relatively unharmed. Van Weyden is promoted as mate, for the original mate had been murdered. Larsen later gets his vengeance by torturing his crew, and constantly claiming that he is going to murder Leach and Johnson at his earliest convenience, being the hunting season is done, as he can't afford to lose any crew. He later allows them to be lost to the sea when they attempt to flee on a hunting boat.
+During this section, the Ghost picks up another set of castaways, including a poet named Maud Brewster. Miss Brewster and van Weyden had known each other previouslyâbut only as writers. Both Wolf Larsen and van Weyden immediately feel attraction to her, due to her intelligence and "female delicacy". Van Weyden sees her as his first true love. He strives to protect her from the crew, the horrors of the sea, and Wolf Larsen. As this happens, Wolf Larsen meets his brother Death Larsen, a bitter opponent of his. Wolf kidnapped several of Death's crew and forced them into servitude to fill his own ranks, lost previously during a storm. During one of Wolf Larsen's intense headaches, which render him near immobile, van Weyden steals a boat and flees with Miss Brewster.
+The two eventually land on an uninhabited island, heavily populated with seals. They hunt, build shelter and a fire, and survive for several days, using the strength they gained while on the Ghost. The Ghost eventually crashes on the island, with Wolf Larsen the only crew member. As a revenge, Death Larsen had tracked his brother, bribed his crew, destroyed his sails, and set Larsen adrift at sea. It is purely by chance that van Weyden and Miss Brewster meet Larsen again.
+Van Weyden obtains all of the weapons including firearms left on the ship, but he cannot bear to murder Larsen, who does not threaten him. Van Weyden and Miss Brewster decide they can repair the ship, but Larsen, who intends to die on the island and take them with him, sabotages any repairs they make. After a headache, Larsen is rendered blind. He feigns paralysis and attempts to murder van Weyden when he draws within arm's reach but just then is hit with a stroke that leaves him blind and the right side of his body paralyzed. His condition only worsens; he loses usage of his remaining arm, leg, and voice. Miss Brewster and van Weyden, unable to bring themselves to leave him to rot, care for him. Despite this kindness, he continues his resistance, setting fire to the bunk's mattress above him.
+Van Weyden finishes repairing the Ghost, and he and Miss Brewster set sail. During a violent storm, Wolf Larsen dies. They give Larsen a burial at sea, an act mirroring an incident van Weyden witnessed when he was first rescued. The story ends with the two being rescued by an American revenue cutter.
 
 Sample 3:
-  Predicted: opsspirrhisopsaintojsjolikenstonicjoltscoprhisoprhisuesterangethivethigjolstibjrrisoulordjololstonstonstonjolstonstonstonjolstonston10,30,3009,3000,1,3000,3009,1509,30,3009,3609,3000,3000,3000,3000,3000,3000,3000,3000,1000,3000,1500,3000,1000,3000,3000,3000,3000,1000,
-  Reference:  The novel is largely set in and near the town of Dillsborough, in the fictional Rufford County. The two principal subplots centre on the courtship behaviour of two young women.
-The heroine, Mary Masters, is the daughter of an attorney, and has been raised as a gentlewoman. Her stepmother is from a lower social order; believing it best for Mary, she pressures her strongly to accept a proposal from Lawrence Twentyman, a prosperous young yeoman farmer with aspirations to gentility. While Mary respects Twentyman for his excellent qualities, she feels that she cannot love him as a wife should a husband. She admires Reginald Morton, whose cousin is the squire of Bragton and thus one of the two major landowners of Rufford County. Reginald admires Mary as well; but for most of the novel, each is ignorant of the other's feelings: Mary, as a gentlewoman, cannot take the initiative in such a matter; and Reginald, misinformed that Mary loves another, is unwilling to make an offer and have it rejected.
-The anti-heroine of the novel is Arabella Trefoil. Her father is cousin to the Duke of Mayfair; her mother was a banker's daughter. Her parents are unofficially separated, and living in straitened circumstances. Arabella and her mother, Lady Augustus Trefoil, have no fixed abode; they wander from place to place, visiting people who cannot refuse them without creating social awkwardness. At Lady Augustus's direction, Arabella has spent many years struggling to secure a rich husband who will give her and her mother high social standing, an assured income, and a house of their own. She has lately become provisionally engaged to John Morton, the squire of Bragton and a rising figure in the Foreign Office. He would be an adequate but not outstanding husband by her standards; and when the opportunity presents itself, she attempts to entrap the wealthy and titled young Lord Rufford, concealing these attempts from Morton so that she can accept his proposal should they fail.
-John Morton falls ill and dies. Arabella, who is not altogether wicked, visits him at his deathbed despite the fact that this will assist Lord Rufford in escaping her toils. After Morton's death, she accepts an offer of marriage from Mounser Green, a Foreign Office clerk who is taking Morton's place as ambassador-designate to Patagonia. Like Morton, Green is not a brilliant match for her, but an acceptable one. John Morton's death makes Reginald Morton the squire of Bragton; at this point, when Mary Masters fears that he has moved too far above her in status, he confesses his love to her. A proposal ensues and is eagerly accepted.
-The American senator of the title is Elias Gotobed, who sits in the US Senate for the fictional state of Mikewa. The guest of John Morton, Senator Gotobed is trying to learn about England and the English. Through his often-tactless remarks in conversation, through his letters to a friend in America, and through a lecture in London titled "The Irrationality of Englishmen", he comments on British justice and government, the Church of England, the custom of primogeniture, and other aspects of English life.
+  Predicted: tobr—stok0,1,2,3,3,4,3,3,4,6,6,7,8,9,9,9,10,9,10,12,13,16,17,18-18,19,0,19,0,0,1,2,3,3,4,3,4,5,6,6,7,9,9,10,9-9,0,0,0,1,2,3,3,4,3,4-3,4,5,6,9,9,9,0,9,10
+  Reference:  The biblical portion of the play, a retelling of the Visitation of the Shepherds, comes only after a longer, invented story that mirrors it, in which the shepherds, before visiting the holy baby outside in a manger, must first rescue one of their sheep that has been hidden in a cradle indoors by a comically evil sheep-stealing couple. Once they have discovered and punished the thieves, the storyline switches to the familiar one of the three shepherds being told of the birth of Christ by an angel, and going to Bethlehem to offer the true Child gifts.
+At the start of the play, Coll, the first shepherd ("primus pastor") arrives in a field, invoking God in anachronistic terms (referring, as the shepherds will do throughout the play, to the life and death of Christ even though at this point of the play Christ has not yet been born) complaining about the (typically English) cold weather and about his poverty and the arrogance of local gentry. He begins by saying, "Lord, what these weders are cold! And I am ill happyed" which translates as "God, the weather is cold and I am ill prepared/clothed." Gib, the second shepherd, arrives without seeing Coll and complains first about the weather and then about the plight of married men, himself included, with bawdy speculation about the lives of men with more than one wife and advice to "young men of wooing" to "Be well war of weding" (wary of marriage). He paints a portrait of his wife as a loud, heavy-drinking, alternately abusive and sentimentally pious, whale-sized woman. "By him that died for us all, I would I had run til I had lost her!" at which point he is startled by Coll. They confer about where Daw, a third, young, lazy and mischievous, shepherd, has gotten to, at which point Daw arrives complaining about employers, hunger, and about recent floods which he compares to Noah's flood.
+Mak, a local good-for-nothing and well-known thief, arrives and pretends to be a yeoman from a lord. Although they recognize him from the start, he insults and threatens them by saying that he will have them flogged. When they threaten him, he pretends not to have known who they were. Mak tries to gain sympathy from the shepherds by explaining how his wife is a lazy drunk who gives birth to too many children. Invoking Christ and Pontius Pilate, Mak agrees to camp with the shepherds, and feigns to lie down among them. However, once they have fallen asleep he casts a spell to make sure they will not wake up and then sneaks off to steal one of their sheep. He heads back to his cottage and trades insults with Gill, his wife, who firmly believes that Mak will be hanged for the theft and comes up with a plan for hiding the sheep - she will put it in an empty cradle and pretend that it is her newborn child, and that she is loudly, painfully in labor with its twin, so that the shepherds will quickly give up any search.
+Mak sneaks back among the shepherds and pretends to awaken along with them. They head off to take account of their sheep while Mak heads home to prepare. With despair at their catastrophic ill fortune, the shepherds realize a sheep is missing and go to search Mak's house. They are initially fooled by Mak and Gill's ruse despite Gill going so far as to say that if she's lying she'll eat the child in her cradle (as she indeed plans to). The shepherds leave defeated, but realize that they have failed to bring any gifts to the "baby", and go back. When they remove the swaddling clothes they recognize their sheep, but decide not to kill Mak but instead roll him in canvas and throw him up and down, punishing him until they are exhausted.
+When they have left Mak's cottage, the biblical story proper begins - the Angel appears and tells them to go to "Bedlam" (Bethlehem) to see the Christ child. They wonder at the event, chastising each other for their collective delay, and then go to the manger where Mary (Mother of Jesus) welcomes them and receives their praise for her mildness. They each address the Child in turn, beginning by praising His authority and His creation of all things in tones of reverence and awe, but each comically shifting mid-speech to cooing, gushing baby talk, since they are addressing an adorable baby, who Coll, Gib, and Daw respectively give "a bob of cherries," a bird, and a ball ("Have and play thee withal, and go to the tennis!") The shepherds rejoice at their salvation, all thoughts of hardship and complaint vanished, and leave singing in unison.
 
 
 ================================================================================
@@ -40,124 +35,68 @@ SAMPLE PREDICTIONS FROM BASE MODEL
 Sample 1:
   Predicted: Summarize the following document. Give in paragraph format:
 
-ï»¿Project Gutenberg's Search the Sky, by Frederik Pohl and C. Kornbluth
+ï»¿The Project Gutenberg EBook of Shadows in Zamboula, by Robert E. Howard
 
-This eBook is for the use of anyone anywhere in the United States and most
-other parts of the world at no cost and with almost no restrictions
-whatsoever. You may copy it, give it away or re-use it under the terms of
-the Project Gutenberg License included with this eBook or online at
-www.gutenberg.org. If you are not located in the United States, you'll have
-to check the laws of the country where you are located before using this ebook. Title: Search the Sky
+This eBook is for the use of anyone anywhere at no cost and with
+almost no restrictions whatsoever. You may copy it, give it away or
+re-use it under the terms of the Project Gutenberg License included
+with this eBook or online at www.gutenberg.org/license
 
-Author: Frederik Pohl
-        C. Kornbluth
 
-Release Date: June 3, 2016 [EBook #52228]
+Title: Shadows in Zamboula
+
+Author: Robert E. Howard
+
+Release Date: February 25, 2013 [EBook #42196]
 
 Language: English
 
-Character set encoding: UTF-8
 
-*** START OF THIS PROJECT GUTENBERG EBOOK SEARCH THE SKY ***
-
+*** START OF THIS PROJECT GUTENBERG EBOOK SHADOWS IN ZAMBOULA ***
 
 
 
 
-
-
+Produced by Greg Weeks, Mary Meehan and the Online
+Distributed Proofreading Team at http://www.pgdp.net
 
 
 
 
 
 
-                  By Frederik Pohl and C. Kornbluth
-
-
-                         _THE SPACE MERCHANTS_
-                            _SEARCH THE SKY_
-
-------------------------------------------------------------------------
 
 
 
+                          SHADOWS IN ZAMBOULA
 
-                               SEARCH THE
-                                  SKY
+                          By Robert E. End of the Project Gutenberg EBook of Shadows in Zamboula, by Robert E. Howard
 
+*** END OF THIS PROJECT GUTENBERG EBOOK SHADOWS IN ZAMBOULA ***
 
-
-
-                                   by
-                             Frederik Pohl
-                                  and
-                            C. Kornbluth
-
-
-
-
-                      BALLANTINE BOOKS Â· NEW YORK
-
-------------------------------------------------------------------------
-
-
-
-
-                          COPYRIGHT, 1954, BY
-                   FREDERIK POHL AND C. 54-6478
-                PRINTED IN THE UNITED STATES OF AMERICA
-
-
-                         BALLANTINE BOOKS, INC. copyright
-                    on this publication was renewed. ------------------------------------------------------------------------
-
-
-
-
-                               SEARCH THE
-                                  SKY
-
-
-
-
-..... Pohl and Kornbluth as a
-team, although they had collaborated before under pen names and had
-established reputations singly. Their new novel, SEARCH THE SKY, has the
-same wit, the same passages of genuinely beautiful writing andâwhat is
-most important and most characteristicâthe same underlying concern for
-human beings, whether they are on future Madison Avenues or in the outer
-galaxies. Kornbluthâs seventh published novel. Pohl; and his most recent
-was THE SYNDIC (Doubleday, 1953). Kornbluth, still under thirty, now
-lives in an upstate New York farmhouse with his wife and child where he
-devotes himself to writing. Pohlâs sixth published book. Pohl lives in a large
-old house on the Jersey shoreââfive rooms for me, four for my wife and
-two apiece for the children.â He has three more books forthcoming in
-1953: two anthologies and his first solo novel. Kornbluth
-
-*** END OF THIS PROJECT GUTENBERG EBOOK SEARCH THE SKY ***
-
-***** This file should be named 52228-0.txt or 52228-0.zip *****
+***** This file should be named 42196.txt or 42196.zip *****
 This and all associated files of various formats will be found in:
-        http://www.gutenberg.org/5/2/2/2/52228/
+        http://www.gutenberg.org/4/2/1/9/42196/
+
+Produced by Greg Weeks, Mary Meehan and the Online
+Distributed Proofreading Team at http://www.pgdp.net
 
 
-
-Updated editions will replace the previous one--the old editions will
-be renamed. Creating the works from print editions not protected by U.S. copyright
-law means that no one owns a United States copyright in these works,
-so the Foundation (and you!) can copy and distribute it in the United
-States without permission and without paying copyright
-royalties. Special rules, set forth in the General Terms of Use part
-of this license, apply to copying and distributing Project
-Gutenberg-tm electronic works to protect the PROJECT GUTENBERG-tm
-concept and trademark. Project Gutenberg is a registered trademark,
-and may not be used if you charge for the eBooks, unless you receive
-specific permission. If you do not charge anything for copies of this
-eBook, complying with the rules is very easy. They may be modified and printed and given
-away--you may do practically ANYTHING in the United States with eBooks
-not protected by U.S. copyright law. Redistribution is subject to the
-trademark license, especially commercial redistribution. START: FULL LICENSE
+Updated editions will replace the previous one--the old editions
+will be renamed. Creating the works from public domain print editions means that no
+one owns a United States copyright in these works, so the Foundation
+(and you!) can copy and distribute it in the United States without
+permission and without paying copyright royalties. Special rules,
+set forth in the General Terms of Use part of this license, apply to
+copying and distributing Project Gutenberg-tm electronic works to
+protect the PROJECT GUTENBERG-tm concept and trademark. Project
+Gutenberg is a registered trademark, and may not be used if you
+charge for the eBooks, unless you receive specific permission. If you
+do not charge anything for copies of this eBook, complying with the
+rules is very easy. They may be modified and printed and given away--you may do
+practically ANYTHING with public domain eBooks. Redistribution is
+subject to the trademark license, especially commercial
+redistribution. *** START: FULL LICENSE ***
 
 THE FULL PROJECT GUTENBERG LICENSE
 PLEASE READ THIS BEFORE YOU DISTRIBUTE OR USE THIS WORK
@@ -165,115 +104,304 @@ PLEASE READ THIS BEFORE YOU DISTRIBUTE OR USE THIS WORK
 To protect the Project Gutenberg-tm mission of promoting the free
 distribution of electronic works, by using or distributing this work
 (or any other work associated in any way with the phrase "Project
-Gutenberg"), you agree to comply with all the terms of the Full
-Project Gutenberg-tm License available with this file or online at
-www.gutenberg.org/license. General Terms of Use and Redistributing Project
-Gutenberg-tm electronic works
+Gutenberg"), you agree to comply with all the terms of the Full Project
+Gutenberg-tm License (available with this file or online at
+http://gutenberg.org/license). General Terms of Use and Redistributing Project Gutenberg-tm
+electronic works
 
 1.A. By reading or using any part of this Project Gutenberg-tm
 electronic work, you indicate that you have read, understand, agree to
 and accept all the terms of this license and intellectual property
 (trademark/copyright) agreement. If you do not agree to abide by all
-the terms of this agreement, you must cease using and return or
-destroy all copies of Project Gutenberg-tm electronic works in your
-possession. If you paid a fee for obtaining a copy of or access to a
-Project Gutenberg-tm electronic work and you do not agree to be bound
-by the terms of this agreement, you may obtain a refund from the
-person or entity to whom you paid the fee as set forth in paragraph
-1.E.8. "Project Gutenberg" is a registered trademark. There are a few
+the terms of this agreement, you must cease using and return or destroy
+all copies of Project Gutenberg-tm electronic works in your possession. If you paid a fee for obtaining a copy of or access to a Project
+Gutenberg-tm electronic work and you do not agree to be bound by the
+terms of this agreement, you may obtain a refund from the person or
+entity to whom you paid the fee as set forth in paragraph 1.E.8. "Project Gutenberg" is a registered trademark. There are a few
 things that you can do with most Project Gutenberg-tm electronic works
 even without complying with the full terms of this agreement. There are a lot of things you can do with Project
-Gutenberg-tm electronic works if you follow the terms of this
-agreement and help preserve free future access to Project Gutenberg-tm
-electronic works. The Project Gutenberg Literary Archive Foundation ("the
-Foundation" or PGLAF), owns a compilation copyright in the collection
-of Project Gutenberg-tm electronic works. Nearly all the individual
-works in the collection are in the public domain in the United
-States. If an individual work is unprotected by copyright law in the
-United States and you are located in the United States, we do not
-claim a right to prevent you from copying, distributing, performing,
-displaying or creating derivative works based on the work as long as
-all references to Project Gutenberg are removed. Of course, we hope
-that you will support the Project Gutenberg-tm mission of promoting
-free access to electronic works by freely sharing Project Gutenberg-tm
-works in compliance with the terms of this agreement for keeping the
-Project Gutenberg-tm name associated with the work. You can easily
-comply with the terms of this agreement by keeping this work in the
-same format with its attached full Project Gutenberg-tm License when
-you share it without charge with others. The copyright laws of the place where you are located also govern
-what you can do with this work. Copyright laws in most countries are
-in a constant state of change. If you are outside the United States,
-check the laws of your country in addition to the terms of this
-agreement before downloading, copying, displaying, performing,
-distributing or creating derivative works based on this work or any
-other Project Gutenberg-tm work. The Foundation makes no
-representations concerning the copyright status of any work in any
-country outside the United States. Unless you have removed all references to Project Gutenberg:
+Gutenberg-tm electronic works if you follow the terms of this agreement
+and help preserve free future access to Project Gutenberg-tm electronic
+works. The Project Gutenberg Literary Archive Foundation ("the Foundation"
+or PGLAF), owns a compilation copyright in the collection of Project
+Gutenberg-tm electronic works. Nearly all the individual works in the
+collection are in the public domain in the United States. If an
+individual work is in the public domain in the United States and you are
+located in the United States, we do not claim a right to prevent you from
+copying, distributing, performing, displaying or creating derivative
+works based on the work as long as all references to Project Gutenberg
+are removed. Of course, we hope that you will support the Project
+Gutenberg-tm mission of promoting free access to electronic works by
+freely sharing Project Gutenberg-tm works in compliance with the terms of
+this agreement for keeping the Project Gutenberg-tm name associated with
+the work. You can easily comply with the terms of this agreement by
+keeping this work in the same format with its attached full Project
+Gutenberg-tm License when you share it without charge with others. The copyright laws of the place where you are located also govern
+what you can do with this work. Copyright laws in most countries are in
+a constant state of change. If you are outside the United States, check
+the laws of your country in addition to the terms of this agreement
+before downloading, copying, displaying, performing, distributing or
+creating derivative works based on this work or any other Project
+Gutenberg-tm work. The Foundation makes no representations concerning
+the copyright status of any work in any country outside the United
+States. Unless you have removed all references to Project Gutenberg:
 
-1.E.1. The following sentence, with active links to, or other
-immediate access to, the full Project Gutenberg-tm License must appear
-prominently whenever any copy of a Project Gutenberg-tm work (any work
-on which the phrase "Project Gutenberg" appears, or with which the
-phrase "Project Gutenberg" is associated) is accessed, displayed,
-performed, viewed, copied or distributed:
+1.E.1. The following sentence, with active links to, or other immediate
+access to, the full Project Gutenberg-tm License must appear prominently
+whenever any copy of a Project Gutenberg-tm work (any work on which the
+phrase "Project Gutenberg" appears, or with which the phrase "Project
+Gutenberg" is associated) is accessed, displayed, performed, viewed,
+copied or distributed:
 
-  This eBook is for the use of anyone anywhere in the United States and
-  most other parts of the world at no cost and with almost no
-  restrictions whatsoever. You may copy it, give it away or re-use it
-  under the terms of the Project Gutenberg License included with this
-  eBook or online at www.gutenberg.org. If you are not located in the
-  United States, you'll have to check the laws of the country where you
-  are located before using this ebook. If an individual Project Gutenberg-tm electronic work is
-derived from texts not protected by U.S. copyright law (does not
-contain a notice indicating that it is posted with permission of the
-copyright holder), the work can be copied and distributed to anyone in
-the United States without paying any fees or charges. If you are
-redistributing or providing access to a work with the phrase "Project
-Gutenberg" associated with or appearing on the work, you must comply
-either with the requirements of paragraphs 1.E.1 through 1.E.7 or
-obtain permission for the use of the work and the Project Gutenberg-tm
-trademark as set forth in paragraphs 1.E.8 or 1.E.9. If an individual Project Gutenberg-tm electronic work is posted
+This eBook is for the use of anyone anywhere at no cost and with
+almost no restrictions whatsoever. You may copy it, give it away or
+re-use it under the terms of the Project Gutenberg License included
+with this eBook or online at www.gutenberg.org/license
+
+1.E.2. If an individual Project Gutenberg-tm electronic work is derived
+from the public domain (does not contain a notice indicating that it is
+posted with permission of the copyright holder), the work can be copied
+and distributed to anyone in the United States without paying any fees
+or charges. If you are redistributing or providing access to a work
+with the phrase "Project Gutenberg" associated with or appearing on the
+work, you must comply either with the requirements of paragraphs 1.E.1
+through 1.E.7 or obtain permission for the use of the work and the
+Project Gutenberg-tm trademark as set forth in paragraphs 1.E.8 or
+1.E.9. If an individual Project Gutenberg-tm electronic work is posted
 with the permission of the copyright holder, your use and distribution
-must comply with both paragraphs 1.E.1 through 1.E.7 and any
-additional terms imposed by the copyright holder. Additional terms
-will be linked to the Project Gutenberg-tm License for all works
-posted with the permission of the copyright holder found at the
-beginning of this work. Do not unlink or detach or remove the full Project Gutenberg-tm
+must comply with both paragraphs 1.E.1 through 1.E.7 and any additional
+terms imposed by the copyright holder. Additional terms will be linked
+to the Project Gutenberg-tm License for all works posted with the
+permission of the copyright holder found at the beginning of this work. Do not unlink or detach or remove the full Project Gutenberg-tm
 License terms from this work, or any files containing a part of this
 work or any other work associated with Project Gutenberg-tm. Do not copy, display, perform, distribute or redistribute this
 electronic work, or any part of this electronic work, without
 prominently displaying the sentence set forth in paragraph 1.E.1 with
 active links or immediate access to the full terms of the Project
-Gutenberg-tm License.
-
-1.E.2. You may convert to and distribute this work in any binary,
-compressed, marked up, nonproprietary or proprietary form, including any
-word processing or hypertext form. However, if you provide access to or
+Gutenberg-tm License. However, if you provide access to or
 distribute copies of a Project Gutenberg-tm work in a format other than
 "Plain Vanilla ASCII" or other format used in the official version
 posted on the official Project Gutenberg-tm web site (www.gutenberg.org),
 you must, at no additional cost, fee or expense to the user, provide a
 copy, a means of exporting a copy, or a means of obtaining a copy upon
 request, of the work in its original "Plain Vanilla ASCII" or other
-form.
-  Reference:  The play is set in Bath in the 18th century, a town that was legendary for conspicuous consumption and fashion at the time. Wealthy, fashionable people went there to "take the waters", which were believed to have healing properties. Bath was much less exclusive than London, and hence it provides an ideal setting for the characters.
-The plot centres on the two young lovers, Lydia and Jack. Lydia, who reads a lot of popular novels of the time, wants a purely romantic love affair. To court her, Jack pretends to be "Ensign Beverley", a poor officer. Lydia is enthralled with the idea of eloping with a poor soldier in spite of the objections of her guardian, Mrs. Malaprop, a moralistic widow. Mrs. Malaprop is the chief comic figure of the play, thanks to her continual misuse of words that sound like the words she intends to use, but mean something completely different. (The term malapropism was coined in reference to the character.)
-Lydia has two other suitors: Bob Acres (a somewhat buffoonish country gentleman), and Sir Lucius O'Trigger, an impoverished and combative Irish gentleman. Sir Lucius pays Lucy to carry love notes between him and Lydia (who uses the name "Delia"), but Lucy is swindling him: "Delia" is actually Mrs. Malaprop.
-As the play opens, Sir Anthony arrives suddenly in Bath. He has arranged a marriage for Jack, but Jack demurs, saying he is in love already. They quarrel violently. But Jack soon learns through the gossip of Lucy and Fag that the marriage arranged by Sir Anthony is, in fact, with Lydia. He makes a great show of submission to his father, and is presented to Lydia with Mrs. Malaprop's blessing. Jack confides to Lydia that he is only posing as Sir Anthony's son. She annoys Mrs. Malaprop by loudly professing her eternal devotion to "Beverley" while rejecting "Jack Absolute".
-Jack's friend Faulkland is in love with Julia, but he suffers from jealous suspicion. He is constantly fretting himself about her fidelity. Faulkland and Julia quarrel foolishly, making elaborate and high-flown speeches about true love that satirise the romantic dramas of the period.
-Bob Acres tells Sir Lucius that another man ("Beverley") is courting the lady of Acres' choice (Lydia, though Sir Lucius does not know this). Sir Lucius immediately declares that Acres must challenge "Beverley" to a duel and kill him. Acres goes along, and writes out a challenge note â despite his own rather more pacifist feelings, and the profound misgivings of his servant David. Sir Lucius leaves, Jack arrives, and Acres tells him of his intent. Jack agrees to deliver the note to "Beverley", but declines to be Acres' second.
-Mrs. Malaprop again presents Jack to Lydia, but this time with Sir Anthony present, exposing Jack's pose as "Beverley". Lydia is enraged by the puncturing of her romantic dreams, and spurns Jack contemptuously.
-Sir Lucius has also learned of the proposed marriage of Jack and Lydia, and determines to challenge Jack. He meets Jack, who, smarting from Lydia's rejection, agrees to fight him without even knowing the reason. They will meet at the same time as Acres is scheduled to fight "Beverley".
-At the duelling ground, Acres is very reluctant to fight, but Sir Lucius will have no shirking. Jack and Faulkland arrive. Acres learns that "Beverley" is actually his friend Jack, and begs off from their duel. However, Jack is quite willing to fight Sir Lucius, and they cross swords.
-David informs Mrs. Malaprop, Lydia, Julia, and Sir Anthony of the dueling, and they all rush off to stop it. Sir Lucius explains the cause of his challenge, but Lydia denies any connection to him, and admits her love for Jack. Mrs. Malaprop announces that she is Delia, but Sir Lucius recoils in horror, realising that he has been hoaxed. Sir Anthony consoles Mrs. Malaprop, Julia is reconciled to Faulkland, and Acres invites everyone to a party.
+form. Any alternate format must include the full Project Gutenberg-tm
+License as specified in paragraph 1.E.1. Do not charge a fee for access to, viewing, displaying,
+performing, copying or distributing any Project Gutenberg-tm works
+unless you comply with paragraph 1.E.8 or 1.E.9. You may charge a reasonable fee for copies of or providing
+access to or distributing Project Gutenberg-tm electronic works provided
+that
+
+- You pay a royalty fee of 20% of the gross profits you derive from
+     the use of Project Gutenberg-tm works calculated using the method
+     you already use to calculate your applicable taxes. The fee is
+     owed to the owner of the Project Gutenberg-tm trademark, but he
+     has agreed to donate royalties under this paragraph to the
+     Project Gutenberg Literary Archive Foundation. Royalty payments
+     must be paid within 60 days following each date on which you
+     prepare (or are legally required to prepare) your periodic tax
+     returns. Royalty payments should be clearly marked as such and
+     sent to the Project Gutenberg Literary Archive Foundation at the
+     address specified in Section 4, "Information about donations to
+     the Project Gutenberg Literary Archive Foundation."
+
+- You provide a full refund of any money paid by a user who notifies
+     you in writing (or by e-mail) within 30 days of receipt that s/he
+     does not agree to the terms of the full Project Gutenberg-tm
+     License. You must require such a user to return or
+     destroy all copies of the works possessed in a physical medium
+     and discontinue all use of and all access to other copies of
+     Project Gutenberg-tm works.
+
+- You provide, in accordance with paragraph 1.F.3, a full refund of
+     any money paid for a work or a replacement copy, if a defect in the
+     electronic work is discovered and reported to you within 90 days
+     of receipt of the work.
+
+
+- You comply with all other terms of this agreement for free
+   distribution of Project Gutenberg-tm works.
+If the GPL Software violates another law, you must reproduce
+the conditions of section 4,
+  Reference:  Anne Shirley has now been married to Gilbert Blythe for 15 years, and the couple have six children: Jem, Walter, Nan, Di, Shirley, and Rilla.
+After a trip to London, Anne returns to the news that a new minister has arrived in Glen St. Mary. John Meredith is a widower with four young children: Gerald (Jerry), Faith, Una, and Thomas Carlyle (Carl). The children have not been properly brought up since the death of their mother, with only their father (who is easily absorbed by matters of theology) to parent them. The children are considered wild and mischievous by many of the families in the village (who tend only to hear about the Meredith children when they have gotten into some kind of scrape), causing them to question Mr. Meredith's parenting skills and his suitability as a minister.
+For most of the book, only the Blythes know of the Meredith children's loyalty and kindness. They rescue an orphaned girl, Mary Vance, from starvation, and Una finds a home for her with Mrs. Marshall Elliott. When the children get into trouble, Faith sometimes tries to explain their behavior to the townsfolk, which generally causes an even bigger scandal.
+The Merediths, Blythes, and Mary Vance often play in a hollow called Rainbow Valley, which becomes a gathering place for the children in the book. Jem Blythe tries to help the Merediths behave better by forming the "Good-Conduct Club," in which the Merediths punish themselves for misdeeds. Their self-imposed punishments lead to Carl becoming very ill with pneumonia after spending hours in a graveyard on a wet night, and to Una fainting in church after fasting all day. When this happens, John Meredith is wracked with guilt over his failings as a father.
+Mr. Meredith realizes that he should marry again and give the children a mother, though he has always thought he will never love anyone again as he did his late wife. He is surprised to find that he has fallen in love with Rosemary West, a woman in her late thirties who lives with her sister Ellen, who is ten years older. John proposes marriage to Rosemary, but Ellen forbids Rosemary from accepting, as years earlier they had promised each other never to leave the other following the deaths of their parents. However, Ellen eventually reunites with her childhood beau, Norman Douglas, and asks Rosemary to release her from her promise so she can marry Norman. Rosemary agrees, but now thinks that John Meredith hates her.
+Una overhears her father expressing feelings for Rosemary and goes to ask Rosemary to marry her father despite her misgivings about stepmothers, who Mary Vance has told her are always mean. Rosemary sets her mind at ease and agrees to speak to John Meredith again. They become engaged, and Rosemary and Ellen plan a double wedding in the fall.
 
 Sample 2:
   Predicted: Summarize the following document. Give in paragraph format:
 
+ï»¿The Project Gutenberg eBook, The Sea-Wolf, by Jack London
+
+
+This eBook is for the use of anyone anywhere at no cost and with
+almost no restrictions whatsoever. You may copy it, give it away or
+re-use it under the terms of the Project Gutenberg License included
+with this eBook or online at www.gutenberg.org
+
+
+
+
+
+Title: The Sea-Wolf
+
+
+Author: Jack London
+
+
+
+Release Date: December 24, 2010  [eBook #1074]
+First released: October 15, 1997
+
+Language: English
+
+Character set encoding: UTF-8
+
+
+***START OF THE PROJECT GUTENBERG EBOOK THE SEA-WOLF***
+
+
+Transcribed from the 1917 William Heinemann edition by David Price, email
+ccx074@pglaf.org
+
+
+
+
+
+                               THE SEA-WOLF
+
+
+                                    BY
+                               JACK LONDON
+
+                                AUTHOR OF
+               âTHE CALL OF THE WILD,â âTHE FAITH OF MEN,â
+                                   ETC. Not but that I was afloat in a safe craft, for the _Martinez_ was a new
+ferry-steamer, making her fourth or fifth trip on the run between
+Sausalito and San Francisco. The danger lay in the heavy fog which
+blanketed the bay, and of which, as a landsman, I had little
+apprehension. In fact, I remember the placid exaltation with which I
+took up my position on the forward upper deck, directly beneath the
+pilot-house, and allowed the mystery of the fog to lay hold of my
+imagination. A fresh breeze was blowing, and for a time I was alone in
+the moist obscurityâyet not alone, for I was dimly conscious of the
+presence of the pilot, and of what I took to be the captain, in the glass
+house above my head. I remember thinking how comfortable it was, this division of labour which
+made it unnecessary for me to study fogs, winds, tides, and navigation,
+in order to visit my friend who lived across an arm of the sea. It was
+good that men should be specialists, I mused. The peculiar knowledge of
+the pilot and captain sufficed for many thousands of people who knew no
+more of the sea and navigation than I knew. Coming aboard, as I passed through the
+cabin, I had noticed with greedy eyes a stout gentleman reading the
+_Atlantic_, which was open at my very essay. And there it was again, the
+division of labour, the special knowledge of the pilot and captain which
+permitted the stout gentleman to read my special knowledge on Poe while
+they carried him safely from Sausalito to San Francisco. A red-faced man, slamming the cabin door behind him and stumping out on
+the deck, interrupted my reflections, though I made a mental note of the
+topic for use in a projected essay which I had thought of calling âThe
+Necessity for Freedom: A Plea for the Artist.â  The red-faced man shot a
+glance up at the pilot-house, gazed around at the fog, stumped across the
+deck and back (he evidently had artificial legs), and stood still by my
+side, legs wide apart, and with an expression of keen enjoyment on his
+face. I was not wrong when I decided that his days had been spent on the
+sea. âI had not thought there was any particular strain,â I answered. âIt
+seems as simple as A, B, C. I should not call it anything more than
+mathematical certainty.â
+
+âStrain!â he snorted. Mathematical certainty!â
+
+He seemed to brace himself up and lean backward against the air as he
+stared at me. Whatâs the drift, eh? See âem alterinâ the course!â
+
+From out of the fog came the mournful tolling of a bell, and I could see
+the pilot turning the wheel with great rapidity. The bell, which had
+seemed straight ahead, was now sounding from the side. Our own whistle
+was blowing hoarsely, and from time to time the sound of other whistles
+came to us from out of the fog. âThatâs a ferry-boat of some sort,â the new-comer said, indicating a
+whistle off to the right. âAnd there! Blown by mouth. Some scow schooner, most likely. Better watch out, Mr. Schooner-man. Ah, I thought so. Now hellâs a poppinâ for somebody!â
+
+The unseen ferry-boat was blowing blast after blast, and the mouth-blown
+horn was tooting in terror-stricken fashion. âAnd now theyâre payinâ their respects to each other and tryinâ to get
+clear,â the red-faced man went on, as the hurried whistling ceased. His face was shining, his eyes flashing with excitement as he translated
+into articulate language the speech of the horns and sirens. âThatâs a
+steam-siren a-goinâ it over there to the left. And you hear that fellow
+with a frog in his throatâa steam schooner as near as I can judge,
+crawlinâ in from the Heads against the tide.â
+
+A shrill little whistle, piping as if gone mad, came from directly ahead
+and from very near at hand. Gongs sounded on the _Martinez_. The shrill little whistle, like the chirping of a cricket
+amid the cries of great beasts, shot through the fog from more to the
+side and swiftly grew faint and fainter. I looked to my companion for
+enlightenment. âI almost wish weâd sunk
+him, the little rip! They donât know the meaninâ of it!â
+
+I felt quite amused at his unwarranted choler, and while he stumped
+indignantly up and down I fell to dwelling upon the romance of the fog. And romantic it certainly wasâthe fog, like the grey shadow of infinite
+mystery, brooding over the whirling speck of earth; and men, mere motes
+of light and sparkle, cursed with an insane relish for work, riding their
+steeds of wood and steel through the heart of the mystery, groping their
+way blindly through the Unseen, and clamouring and clanging in confident
+speech the while their hearts are heavy with incertitude and fear. The voice of my companion brought me back to myself with a laugh. I too
+had been groping and floundering, the while I thought I rode clear-eyed
+through the mystery. âHello! Guess he donât hear us yet. Windâs in wrong direction.â
+
+The fresh breeze was blowing right down upon us, and I could hear the
+whistle plainly, off to one side and a little ahead. âFerry-boat?â I asked. He nodded, then added, âOr he wouldnât be keepinâ up such a clip.â  He
+gave a short chuckle. âTheyâre gettinâ anxious up there.â
+
+I glanced up. The captain had thrust his head and shoulders out of the
+pilot-house, and was staring intently into the fog as though by sheer
+force of will he could penetrate it. His face was anxious, as was the
+face of my companion, who had stumped over to the rail and was gazing
+with a like intentness in the direction of the invisible danger. Then everything happened, and with inconceivable rapidity. The fog
+seemed to break away as though split by a wedge, and the bow of a
+steamboat emerged, trailing fog-wreaths on either side like seaweed on
+the snout of Leviathan. He was clad in a blue
+uniform, and I remember noting how trim and quiet he was. His quietness,
+under the circumstances, was terrible. He accepted Destiny, marched hand
+in hand with it, and coolly measured the stroke. As he leaned there, he
+ran a calm and speculative eye over us, as though to determine the
+precise point of the collision, and took no notice whatever when our
+pilot, white with rage, shouted, âNow youâve done it!â
+
+On looking back, I realize that the remark was too obvious to make
+rejoinder necessary. All
+his bluster had gone, and he seemed to have caught the contagion of
+preternatural calm. âAnd listen to the women scream,â he said
+grimlyâalmost bitterly, I thought, as though he had been through the
+experience before. The vessels came together before I could follow his advice. We must have
+been struck squarely amidships, for I saw nothing, the strange steamboat
+having passed beyond my line of vision. The _Martinez_ heeled over,
+sharply, and there was a crashing and rending of timber. I was thrown
+flat on the wet deck, and before I could scramble to my feet I heard the
+scream of the women. This it was, I am certain,âthe most indescribable
+sound ever uttered by human lips.
+
+Then all became confusion. Men were shouting wildly, and I think I
+heard the cry, âFire! Fire!â But I did not understand until later why fire
+should have been mentioned. There was smoke everywhere, thick enough
+to choke, and the whole ship reeked of burning oil. My first impulse was
+to rush aft toward the engine-room where I believed the cause of the
+disaster might lie hidden. Instead, however, I found myself hurrying
+forward along the narrow passageway leading to the saloon. Here I met
+myself confronted by two young ladies, both apparently terrified.
+One held tightly to another, and she sobbed hyster
+  Reference:  Like The Call of the Wild, The Sea Wolf tells the story of a soft, domesticated protagonist, in this novel's case an intellectual man named Humphrey van Weyden, forced to become tough and self-reliant by exposure to cruelty and brutality. The story starts with him aboard a San Francisco ferry, called Martinez, which collides with another ship in the fog and sinks. He is set adrift in the Bay, eventually being picked up by Wolf Larsen. Larsen is the captain of a seal-hunting schooner, the Ghost. Brutal and cynical, yet also highly intelligent and intellectual (though highly biased in his opinions, as he was self-taught), he rules over his ship and terrorizes the crew with the aid of his exceptionally great physical strength. Van Weyden adequately describes him as an individualist, hedonist, and materialist. Larsen does not believe in the immortality of the soul, he finds no meaning in his life save for survival and pleasure and has come to despise all human life and deny its value. Being interested in someone capable of intellectual disputes, he somewhat takes care of Van Weyden, whom he calls 'Hump', while forcing him to become a cabin boy, do menial work, and learn to fight to protect himself from a brutal crew.
+A key event in the story is an attempted mutiny against Wolf Larsen by several members of the crew. The organizers of the mutiny are Leach and Johnson. Johnson had previously been beaten severely by Larsen, and Leach had been punched earlier while being forced to become a boat-puller, motivating the two. The first attempt is by sending Larsen overboard; however, he manages to climb back onto the ship. Searching for his assailant, he ventures into the sleeping quarters, located beneath the main deck, the only exit being a ladder. Several, at least seven men, take part in the mutiny and attack Larsen. Larsen however, demonstrating his inhuman endurance, strength, and conviction, manages to fight his way through the crew, climb the ladder with several men hanging off him, and escape relatively unharmed. Van Weyden is promoted as mate, for the original mate had been murdered. Larsen later gets his vengeance by torturing his crew, and constantly claiming that he is going to murder Leach and Johnson at his earliest convenience, being the hunting season is done, as he can't afford to lose any crew. He later allows them to be lost to the sea when they attempt to flee on a hunting boat.
+During this section, the Ghost picks up another set of castaways, including a poet named Maud Brewster. Miss Brewster and van Weyden had known each other previouslyâbut only as writers. Both Wolf Larsen and van Weyden immediately feel attraction to her, due to her intelligence and "female delicacy". Van Weyden sees her as his first true love. He strives to protect her from the crew, the horrors of the sea, and Wolf Larsen. As this happens, Wolf Larsen meets his brother Death Larsen, a bitter opponent of his. Wolf kidnapped several of Death's crew and forced them into servitude to fill his own ranks, lost previously during a storm. During one of Wolf Larsen's intense headaches, which render him near immobile, van Weyden steals a boat and flees with Miss Brewster.
+The two eventually land on an uninhabited island, heavily populated with seals. They hunt, build shelter and a fire, and survive for several days, using the strength they gained while on the Ghost. The Ghost eventually crashes on the island, with Wolf Larsen the only crew member. As a revenge, Death Larsen had tracked his brother, bribed his crew, destroyed his sails, and set Larsen adrift at sea. It is purely by chance that van Weyden and Miss Brewster meet Larsen again.
+Van Weyden obtains all of the weapons including firearms left on the ship, but he cannot bear to murder Larsen, who does not threaten him. Van Weyden and Miss Brewster decide they can repair the ship, but Larsen, who intends to die on the island and take them with him, sabotages any repairs they make. After a headache, Larsen is rendered blind. He feigns paralysis and attempts to murder van Weyden when he draws within arm's reach but just then is hit with a stroke that leaves him blind and the right side of his body paralyzed. His condition only worsens; he loses usage of his remaining arm, leg, and voice. Miss Brewster and van Weyden, unable to bring themselves to leave him to rot, care for him. Despite this kindness, he continues his resistance, setting fire to the bunk's mattress above him.
+Van Weyden finishes repairing the Ghost, and he and Miss Brewster set sail. During a violent storm, Wolf Larsen dies. They give Larsen a burial at sea, an act mirroring an incident van Weyden witnessed when he was first rescued. The story ends with the two being rescued by an American revenue cutter.
+
+Sample 3:
+  Predicted: Summarize the following document. Give in paragraph format:
+
 <html>
-<head><title>Hitchcock Script at IMSDb.</title>
-<meta name="description" content="Hitchcock script at the Internet Movie Script Database.">
-<meta name="keywords" content="Hitchcock script, Hitchcock movie script, Hitchcock film script">
+<head><title>Woodsman, The Script at IMSDb.</title>
+<meta name="description" content="Woodsman, The script at the Internet Movie Script Database.">
+<meta name="keywords" content="Woodsman, The script, Woodsman, The movie script, Woodsman, The film script">
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="HandheldFriendly" content="true">
 <meta http-equiv="content-type" content="text/html; charset=iso-8859-1">
@@ -449,158 +577,25 @@ Sample 2:
 	<td><a href="/software/rip-from-dvd">Rip from DVD</a>
 <tr>
 	<td><a href="/software/rip-blu-ray">Rip Blu-Ray</a>
-</table>
-
-<br>
-<table width="100%" border=0 cellpadding=2 cellspacing=0 class=body>
 <tr>
-<td class=heading>Fan Sites
+	<td><a href="/software/copy-to-disc">Copy to disc</a>
 <tr>
-    <td><a href="/fan-site/fansite-list/">List of fan sites for movies and TV shows</a>
+	<td><a href="/software/movies-on-cd">Movies on CD</a>
 <tr>
-	<td><a href="/fan-site/movies-and-tv-shows-fan-sites/" target="_blank">Movies &amp; TV Shows Fan-Sites</a>
+	<td><a href="/software/movie-subs">Subtitles for movies</a>
 <tr>
-	<td><a href="/fan-site/tv-series-movie-script-companies/" target="_blank">Tv Series - Movies / Scripts Companies</a>
+	<td><a href="/software/video-editing-software">Video editing software</a>
 <tr>
-	<td><a href="/fan-site/movie-scripts-for-sale/" target="_blank">Scripts For Sale</a>
+	<td><a href="/software/audio-video-converter/">Audio Video Converter</a>
 <tr>
-	<td
-  Reference:  Sethe is a former slave living on the outskirts of Cincinnati shortly after the Civil War. An angry poltergeist terrorizes Sethe and her three children, causing her two sons to run away forever. Eight years later, Sethe (Oprah Winfrey) lives alone with her daughter, Denver (Kimberly Elise). Paul D. (Danny Glover), an old friend from Sweet Home, the plantation Sethe had escaped from years earlier, finds Sethe's home, where he drives off the angry spirit. Afterwards, Paul D. proposes that he should stay and Sethe responds favorably. Shortly after Paul D. moves in, a clean, mentally handicapped young woman (Thandie Newton) named Beloved stumbles into Sethe's yard and also stays with them.
-Denver is initially happy to have Beloved around, but learns that she is Sethe's reincarnated daughter. Nonetheless, she chooses not to divulge Beloved's origins to Sethe. One night, Beloved, aware that Paul D. dislikes her, immobilizes him with a spell and proceeds to assault him sexually. Paul D. resolves to tell Sethe what happened, but instead tells what has happened to a co-worker, Stamp Paid (Albert Hall). Stamp Paid, who has known Sethe for many years, pulls a newspaper clipping featuring Sethe and tells her story to the illiterate Paul D.
-Years ago, Sethe was raped by the nephews of Schoolteacher, the owner of Sweet Home. She complained to Mrs. Garner, Schoolteacher's sister-in-law, who confronted him. In retaliation, Schoolteacher and his nephews whip Sethe. Heavily pregnant with her fourth child, Sethe planned to escape. Her other children were sent off earlier to live with Baby Suggs, Sethe's mother-in-law, but Sethe stayed behind to look for her husband, Halle (Hill Harper) Sethe was assaulted while searching for him in the barn. The Schoolteacher's nephews held her down, raped her and forcibly took her breast milk.
-When Halle failed to comply, Sethe ran off alone. She crossed paths with Amy Denver, a white girl who treated Sethe's injuries and delivered Sethe's child, whom Sethe named Denver after Amy. Sethe eventually reached Baby Suggs' home, but her initial happiness was short-lived when Schoolteacher came to claim Sethe and her children. In desperation, Sethe slits her older daughter's throat, and attempts to kill her other children. Stamp Paid manages to stop her and the disgusted Schoolteacher departs.
-Paul D., horrified by the revelation and suddenly understanding the origin of the poltergeist, confronts Sethe. Sethe justifies her decision without apology, claiming that her children would be better off dead than enslaved. Paul D. departs shortly thereafter in protest. After Paul D.'s departure, Sethe realizes that Beloved is the reincarnation of her dead daughter. Feeling elated yet guilty, Sethe spoils Beloved with elaborate gifts while neglecting Denver. Beloved soon throws a destructive tantrum and her malevolent presence causes living conditions in the house to deteriorate. The women live in squalor and Sethe is unable to work. Denver becomes depressed yet, inspired by a memory of her grandmother's confidence in her, she eventually musters the courage to leave the house and seek employment.
-After Denver attains employment, women from the local church visit Sethe's house at the request of her new co-worker to perform an exorcism. The women from the church comfort the family, and they are praying and singing loudly when Denver's new employer arrives to pick her up for work. Sethe sees him and, reminded of Schoolteacher's arrival, tries to attack him with an icepick, but is subdued by Denver and the women. During the commotion, Beloved disappears completely and Sethe, freed from Beloved's grip, becomes permanently bedridden.
-Some months later, Paul D. encounters Denver at the marketplace. He notices she has transformed into a confident and mature young woman. When Paul D. later arrives at Sethe's house, he finds her suffering from a deep malaise. He assures Sethe that he and Denver will now take care of her. Sethe tells him that she doesn't see the point, as Beloved, her "best thing", is gone. Paul D. disagrees, telling Sethe that she herself is her own best thing.
-
-Sample 3:
-  Predicted: Summarize the following document. Give in paragraph format:
-
-ï»¿The Project Gutenberg eBook, The American Senator, by Anthony Trollope
-
-
-This eBook is for the use of anyone anywhere at no cost and with
-almost no restrictions whatsoever. You may copy it, give it away or
-re-use it under the terms of the Project Gutenberg License included
-with this eBook or online at www.gutenberg.org
-
-
-
-
-
-Title: The American Senator
-
-
-Author: Anthony Trollope
-
-
-
-Release Date: May 4, 2002  [eBook #5118]
-Most recently updated: April 8, 2011
-
-Language: English
-
-
-***START OF THE PROJECT GUTENBERG EBOOK THE AMERICAN SENATOR***
-
-
-E-text prepared by Tapio Riikonen
-and revised by Joseph E. THE AMERICAN SENATOR
-
-by
-
-Anthony Trollope
-
-
-
-
-
-
-First published in serial form in _Temple Bar Magazine_ May, 1876,
-through July, 1877, and in book form in 1877 by Chapman and Hall. CONTENTS
-
-   VOLUME I. I. DILLSBOROUGH. II. THE MORTON FAMILY. III. THE MASTERS FAMILY. IV. THE DILLSBOROUGH CLUB. V. REGINALD MORTON. VI. NOT IN LOVE. VII. VIII. THE PARAGON'S PARTY AT BRAGTON. IX. THE OLD KENNELS. X. GOARLY'S REVENGE. XI. FROM IMPINGTON GORSE. XII. ARABELLA TREFOIL. XIII. AT BRAGTON. XIV. THE DILLSBOROUGH FEUD. XV. XVI. MR. GOTOBED'S PHILANTHROPY. XVII. LORD RUFFORD'S INVITATION. XVIII. THE ATTORNEY'S FAMILY IS DISTURBED. XIX. "WHO VALUED THE GEESE?"
-         XX. XXI. THE FIRST EVENING AT RUFFORD HALL. XXII. JEMIMA. XXIII. POOR CANEBACK. XXIV. THE BALL. XXV. THE LAST MORNING AT RUFFORD HALL. XXVI. GIVE ME SIX MONTHS. XXVII. "WONDERFUL BIRD!"
-
-   VOLUME II. I. MOUNSER GREEN. II. THE SENATOR'S LETTER. III. AT CHELTENHAM. IV. THE RUFFORD CORRESPONDENCE. V. "IT IS A LONG WAY."
-         VI. THE BEGINNING OF PERSECUTION. VII. MARY'S LETTER. VIII. CHOWTON FARM FOR SALE. IX. MISTLETOE. X. HOW THINGS WERE ARRANGED. XI. "YOU ARE SO SEVERE."
-        XII. THE DAY AT PELTRY. XIII. LORD RUFFORD WANTS TO SEE A HORSE. XIV. THE SENATOR IS BADLY TREATED. XV. MR. MAINWARING'S LITTLE DINNER. XVI. PERSECUTION. XVII. "PARTICULARLY PROUD OF YOU."
-      XVIII. LORD RUFFORD MAKES UP HIS MIND. XIX. IT CANNOT BE ARRANGED. XX. "BUT THERE IS SOME ONE."
-        XXI. THE DINNER AT THE BUSH. XXII. MISS TREFOIL'S DECISION. XXIII. "IN THESE DAYS ONE CAN'T MAKE A MAN MARRY."
-       XXIV. THE SENATOR'S SECOND LETTER. XXV. XXVI. LADY USHANT AT BRAGTON. XXVII. ARABELLA AGAIN AT BRAGTON. VOLUME III. I. "I HAVE TOLD HIM EVERYTHING."
-         II. "NOW WHAT HAVE YOU GOT TO SAY?"
-        III. MRS. MORTON RETURNS. IV. THE TWO OLD LADIES. V. THE LAST EFFORT. VI. AGAIN AT MISTLETOE. VII. THE SUCCESS OF LADY AUGUSTUS. VIII. "WE SHALL KILL EACH OTHER."
-         IX. CHANGES AT BRAGTON. X. THE WILL. XI. THE NEW MINISTER. XII. "I MUST GO."
-       XIII. IN THE PARK. XIV. LORD RUFFORD'S MODEL FARM. XV. SCROBBY'S TRIAL. XVI. AT LAST. XVII. "MY OWN, OWN HUSBAND."
-      XVIII. "BID HIM BE A MAN."
-        XIX. "IS IT TANTI?"
-         XX. XXI. ARABELLA'S SUCCESS. XXII. THE WEDDING. XXIII. THE SENATOR'S LECTURE.--NO. I. XXIV. THE SENATOR'S LECTURE.--NO. II. XXV. THE LAST DAYS OF MARY MASTERS. XXVI. VOLUME I. CHAPTER I. DILLSBOROUGH. I never could understand why anybody should ever have begun to live
-at Dillsborough, or why the population there should have been at any
-time recruited by new comers. That a man with a family should cling
-to a house in which he has once established himself is intelligible. The butcher who supplied Dillsborough, or the baker, or the
-ironmonger, though he might not drive what is called a roaring trade,
-nevertheless found himself probably able to live, and might well
-hesitate before he would encounter the dangers of a more energetic
-locality. But how it came to pass that he first got himself to
-Dillsborough, or his father, or his grandfather before him, has
-always been a mystery to me. The town has no attractions, and never
-had any. Every Saturday farmers and
-graziers and buyers of corn and sheep do congregate in a sleepy
-fashion about the streets, but Dillsborough has no character of its
-own, even as a market town. The town consists chiefly of one street which is over a
-mile long, with a square or market-place in the middle, round which
-a few lanes with queer old names are congregated, and a second small
-open space among these lanes, in which the church stands. Beyond that you come to Norrington
-Road,--Norrington being the next town, distant from Dillsborough
-about twelve miles. Dillsborough, however, stands in the county of
-Rufford, whereas at the top of Bullock's Hill you enter the county
-of Ufford, of which Norrington is the assize town. The Dillsborough
-people are therefore divided, some two thousand five hundred of
-them belonging to Rufford, and the remaining five hundred to the
-neighbouring county. This accident has given rise to not a few
-feuds, Ufford being a large county, with pottery, and ribbons,
-and watches going on in the farther confines; whereas Rufford is
-small and thoroughly agricultural. At every interval of ten years, when the census is taken, the
-population of Dillsborough is always found to have fallen off in some
-slight degree. For a few months after the publication of the figures
-a slight tinge of melancholy comes upon the town. The landlord of the
-Bush Inn, who is really an enterprising man in his way and who has
-looked about in every direction for new sources of business, becomes
-taciturn for a while and forgets to smile upon comers; Mr. Ribbs,
-the butcher, tells his wife that it is out of the question that she
-and the children should take that long-talked-of journey to the
-sea-coast; and Mr. Gregory Masters, the well-known old-established
-attorney of Dillsborough, whispers to some confidential friend that
-he might as well take down his plate and shut up his house. But in a
-month or two all that is forgotten, and new hopes spring up even in
-Dillsborough; Mr. Runciman at the Bush is putting up new stables for
-hunting-horses, that being the special trade for which he now finds
-that there is an opening; Mrs. Ribbs is again allowed to suggest
-Mare-Slocumb; and Mr. Masters goes on as he has done for the last
-forty years, making the best he can of a decreasing business. Dillsborough is built chiefly of brick, and is, in its own way,
-solid enough. The Bush, which in the time of the present landlord's
-father was one of the best posting inns on the road, is not only
-substantial, but almost handsome. So far the interior of the house has
-fallen from its past greatness. But the exterior is maintained with
-much care. Runciman himself knows that it has swung
-there, or been displayed in some fashion, since it was the custom for
-the landlord to beat up wine to freshen it before it was given to the
-customers to drink. The attorney's house is of brick, which
-shall not be more particularly described now as many of the scenes
-which these pages will have to describe were acted there; and almost
-the entire High Street in the centre of the town was brick also. But the most remarkable house in Dillsborough was one standing in a
-short thoroughfare called Hobbs Gate, leading down by the side of the
-Bush Inn from the market-place to Church Square, as it is called. As
-you pass down towards the church this house is on the right hand, and
-it occupies with its garden the whole space between the market-place
-and Church Square. But though the house enjoys the privilege of a
-large garden,--so large that the land being in the middle of a town
-would be of great value were it not that Dillsborough is in its
-decadence,--yet it does not enjoy so much advantage as other houses.
-It had originally belonged to Sir Richard Greenway, whose son married Lady Anne Morton, daughter of Lord Morton, then living near Bragton Park. It seems that they lived together very happily until their marriage took place, because neither party seemed disposed to part company afterwards. They both died soon after each other, and left behind them three daughters, Mary, Elizabeth, and Frances. These ladies did not marry till several years later than their mother, and consequently remained unmarried during her life-time. When they became women themselves they went into society separately, and made friends wherever they happened to go. Their friendship grew stronger still, and finally led them to unite against the wishes of their
-  Reference:  The novel is largely set in and near the town of Dillsborough, in the fictional Rufford County. The two principal subplots centre on the courtship behaviour of two young women.
-The heroine, Mary Masters, is the daughter of an attorney, and has been raised as a gentlewoman. Her stepmother is from a lower social order; believing it best for Mary, she pressures her strongly to accept a proposal from Lawrence Twentyman, a prosperous young yeoman farmer with aspirations to gentility. While Mary respects Twentyman for his excellent qualities, she feels that she cannot love him as a wife should a husband. She admires Reginald Morton, whose cousin is the squire of Bragton and thus one of the two major landowners of Rufford County. Reginald admires Mary as well; but for most of the novel, each is ignorant of the other's feelings: Mary, as a gentlewoman, cannot take the initiative in such a matter; and Reginald, misinformed that Mary loves another, is unwilling to make an offer and have it rejected.
-The anti-heroine of the novel is Arabella Trefoil. Her father is cousin to the Duke of Mayfair; her mother was a banker's daughter. Her parents are unofficially separated, and living in straitened circumstances. Arabella and her mother, Lady Augustus Trefoil, have no fixed abode; they wander from place to place, visiting people who cannot refuse them without creating social awkwardness. At Lady Augustus's direction, Arabella has spent many years struggling to secure a rich husband who will give her and her mother high social standing, an assured income, and a house of their own. She has lately become provisionally engaged to John Morton, the squire of Bragton and a rising figure in the Foreign Office. He would be an adequate but not outstanding husband by her standards; and when the opportunity presents itself, she attempts to entrap the wealthy and titled young Lord Rufford, concealing these attempts from Morton so that she can accept his proposal should they fail.
-John Morton falls ill and dies. Arabella, who is not altogether wicked, visits him at his deathbed despite the fact that this will assist Lord Rufford in escaping her toils. After Morton's death, she accepts an offer of marriage from Mounser Green, a Foreign Office clerk who is taking Morton's place as ambassador-designate to Patagonia. Like Morton, Green is not a brilliant match for her, but an acceptable one. John Morton's death makes Reginald Morton the squire of Bragton; at this point, when Mary Masters fears that he has moved too far above her in status, he confesses his love to her. A proposal ensues and is eagerly accepted.
-The American senator of the title is Elias Gotobed, who sits in the US Senate for the fictional state of Mikewa. The guest of John Morton, Senator Gotobed is trying to learn about England and the English. Through his often-tactless remarks in conversation, through his letters to a friend in America, and through a lecture in London titled "The Irrationality of Englishmen", he comments on British justice and government, the Church of England, the custom of primogeniture, and other aspects of English life.
+	<td><a href="/software/music-editor">Music editor</a>
+<tr>
+	<td><a href="/software/photo-manuals">Photo manuals and tutorials</a>
+<tr>
+	<td><a href="/software/f
+  Reference:  The biblical portion of the play, a retelling of the Visitation of the Shepherds, comes only after a longer, invented story that mirrors it, in which the shepherds, before visiting the holy baby outside in a manger, must first rescue one of their sheep that has been hidden in a cradle indoors by a comically evil sheep-stealing couple. Once they have discovered and punished the thieves, the storyline switches to the familiar one of the three shepherds being told of the birth of Christ by an angel, and going to Bethlehem to offer the true Child gifts.
+At the start of the play, Coll, the first shepherd ("primus pastor") arrives in a field, invoking God in anachronistic terms (referring, as the shepherds will do throughout the play, to the life and death of Christ even though at this point of the play Christ has not yet been born) complaining about the (typically English) cold weather and about his poverty and the arrogance of local gentry. He begins by saying, "Lord, what these weders are cold! And I am ill happyed" which translates as "God, the weather is cold and I am ill prepared/clothed." Gib, the second shepherd, arrives without seeing Coll and complains first about the weather and then about the plight of married men, himself included, with bawdy speculation about the lives of men with more than one wife and advice to "young men of wooing" to "Be well war of weding" (wary of marriage). He paints a portrait of his wife as a loud, heavy-drinking, alternately abusive and sentimentally pious, whale-sized woman. "By him that died for us all, I would I had run til I had lost her!" at which point he is startled by Coll. They confer about where Daw, a third, young, lazy and mischievous, shepherd, has gotten to, at which point Daw arrives complaining about employers, hunger, and about recent floods which he compares to Noah's flood.
+Mak, a local good-for-nothing and well-known thief, arrives and pretends to be a yeoman from a lord. Although they recognize him from the start, he insults and threatens them by saying that he will have them flogged. When they threaten him, he pretends not to have known who they were. Mak tries to gain sympathy from the shepherds by explaining how his wife is a lazy drunk who gives birth to too many children. Invoking Christ and Pontius Pilate, Mak agrees to camp with the shepherds, and feigns to lie down among them. However, once they have fallen asleep he casts a spell to make sure they will not wake up and then sneaks off to steal one of their sheep. He heads back to his cottage and trades insults with Gill, his wife, who firmly believes that Mak will be hanged for the theft and comes up with a plan for hiding the sheep - she will put it in an empty cradle and pretend that it is her newborn child, and that she is loudly, painfully in labor with its twin, so that the shepherds will quickly give up any search.
+Mak sneaks back among the shepherds and pretends to awaken along with them. They head off to take account of their sheep while Mak heads home to prepare. With despair at their catastrophic ill fortune, the shepherds realize a sheep is missing and go to search Mak's house. They are initially fooled by Mak and Gill's ruse despite Gill going so far as to say that if she's lying she'll eat the child in her cradle (as she indeed plans to). The shepherds leave defeated, but realize that they have failed to bring any gifts to the "baby", and go back. When they remove the swaddling clothes they recognize their sheep, but decide not to kill Mak but instead roll him in canvas and throw him up and down, punishing him until they are exhausted.
+When they have left Mak's cottage, the biblical story proper begins - the Angel appears and tells them to go to "Bedlam" (Bethlehem) to see the Christ child. They wonder at the event, chastising each other for their collective delay, and then go to the manger where Mary (Mother of Jesus) welcomes them and receives their praise for her mildness. They each address the Child in turn, beginning by praising His authority and His creation of all things in tones of reverence and awe, but each comically shifting mid-speech to cooing, gushing baby talk, since they are addressing an adorable baby, who Coll, Gib, and Daw respectively give "a bob of cherries," a bird, and a ball ("Have and play thee withal, and go to the tennis!") The shepherds rejoice at their salvation, all thoughts of hardship and complaint vanished, and leave singing in unison.
 
