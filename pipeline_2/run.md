@@ -4,24 +4,24 @@ pip install -U bitsandbytes
 ```
 
 
-1. First preprocess the data
+1. First preprocess the data (multi-GPU)
 ```bash
-accelerate semantic_chunking.py
+accelerate launch --config_file accelerate_config.yaml semantic_chunking.py
 ```
 
-2. For the normal embedding, use
+2. For the normal embedding (multi-GPU)
 ```bash
-accelerate launch chunk_embeddings.py
+accelerate launch --config_file accelerate_config.yaml chunk_embeddings.py
 ```
 
-3. For using the llama adapter,
+3. For using the llama adapter (multi-GPU)
 ```bash
-accelerate launch llama_adapter.py
+accelerate launch --config_file accelerate_config.yaml llama_adapter.py
 ```
 
-4.For using the t5 adapter
+4.For using the t5 adapter (multi-GPU)
 ```bash
-accelerate launch t5_adapter.py
+accelerate launch --config_file accelerate_config.yaml t5_adapter.py
 ```
 
 

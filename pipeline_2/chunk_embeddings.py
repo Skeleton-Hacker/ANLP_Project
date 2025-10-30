@@ -1,13 +1,13 @@
 """
-BGE-large Chunk Embedding Generation Pipeline
+BGE-M3 Chunk Embedding Generation Pipeline
 
-This module generates high-quality embeddings for text chunks using BGE-large-en-v1.5 model.
+This module generates high-quality embeddings for text chunks using BGE-M3 model.
 It includes:
 - Loading chunked stories from pickle files
-- Generating BGE-large embeddings (1024-dim) for all chunks
+- Generating BGE-M3 embeddings (1024-dim) for all chunks
 - Saving embeddings in a structured format for downstream use
 
-BGE-large-en-v1.5 produces 1024-dimensional embeddings which will be projected to BART's
+BGE-M3 produces 1024-dimensional embeddings which will be projected to BART's
 embedding space in the fine-tuning pipeline.
 """
 
@@ -29,15 +29,15 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 @dataclass
 class EmbeddingConfig:
-    """Configuration for BGE-large embedding generation."""
+    """Configuration for BGE-M3 embedding generation."""
     # Data settings
     chunked_data_dir: str = "chunked_data"
     output_dir: str = "chunked_data"
     splits: List[str] = field(default_factory=lambda: ["train", "validation", "test"])
     
     # Embedding settings
-    embedding_model_name: str = "BAAI/bge-large-en-v1.5"  # BGE-large for high-quality embeddings
-    embedding_dim: int = 1024  # BGE-large produces 1024-dim embeddings
+    embedding_model_name: str = "BAAI/bge-m3"  # BGE-M3 for high-quality embeddings
+    embedding_dim: int = 1024  # BGE-M3 produces 1024-dim embeddings
     
     # Processing settings
     batch_size: int = 32  # Smaller batch size for larger model
@@ -60,22 +60,22 @@ def generate_chunk_embeddings(
     device: str = "cuda",
     batch_size: int = 32
 ) -> np.ndarray:
-    """Generate BGE-large embeddings for chunks.
+    """Generate BGE-M3 embeddings for chunks.
     
     Args:
         chunks: List of chunk strings.
-        model_name: Name of the sentence transformer model (BGE-large).
+        model_name: Name of the sentence transformer model (BGE-M3).
         device: Device to use for computation ('cuda' or 'cpu').
         batch_size: Batch size for embedding generation.
         
     Returns:
         Numpy array of shape (num_chunks, 1024).
     """
-    logger.info(f"Generating BGE-large embeddings for {len(chunks)} chunks...")
+    logger.info(f"Generating BGE-M3 embeddings for {len(chunks)} chunks...")
     
     # Load the model using safetensors to avoid torch.load vulnerability issues
     # on older torch versions. The model is loaded into memory on the CPU first.
-    model = SentenceTransformer(model_name, device='cpu', use_auth_token=False)
+    model = SentenceTransformer(model_name, device='cpu')
     model.to(device)  # Move model to the target device (e.g., 'cuda:0')
     
     embeddings = model.encode(
@@ -100,7 +100,7 @@ def process_and_save_split(
     config: EmbeddingConfig,
     device: str = "cuda"
 ) -> Dict[str, Any]:
-    """Process a split and save BGE-large embeddings.
+    """Process a split and save BGE-M3 embeddings.
     
     Args:
         split_name: Name of the split ('train', 'validation', 'test').
@@ -137,7 +137,7 @@ def process_and_save_split(
     
     logger.info(f"Loaded {len(chunks)} chunks from {len(stories)} stories")
     
-    # Generate BGE-large embeddings
+    # Generate BGE-M3 embeddings
     embeddings = generate_chunk_embeddings(
         chunks,
         config.embedding_model_name,
@@ -200,7 +200,7 @@ def process_and_save_split(
 
 
 def main():
-    """Main BGE-large embedding generation pipeline."""
+    """Main BGE-M3 embedding generation pipeline."""
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
@@ -234,7 +234,7 @@ def main():
         logger.warning("Processing will be significantly slower.")
 
     logger.info("=" * 80)
-    logger.info("BGE-large Chunk Embedding Generation Pipeline")
+    logger.info("BGE-M3 Chunk Embedding Generation Pipeline")
     logger.info("=" * 80)
     logger.info(f"Using device: {device}")
     logger.info(f"Embedding model: {config.embedding_model_name}")
@@ -252,9 +252,9 @@ def main():
         logger.error("Please run semantic_chunking.py first to generate chunked data.")
         return
     
-    # Process each split
+    # Process all splits
     logger.info("\n" + "=" * 80)
-    logger.info("Generating BGE-large Embeddings for All Splits")
+    logger.info("Generating BGE-M3 Embeddings for All Splits")
     logger.info("=" * 80)
     
     for split in config.splits:
