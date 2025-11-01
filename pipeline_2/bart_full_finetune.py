@@ -223,6 +223,9 @@ def setup_logging(output_dir: str):
     log_dir = Path(output_dir) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     
+    # Set root logger level
+    logging.getLogger().setLevel(logging.INFO)
+    
     # File handler
     log_file = log_dir / f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     file_handler = logging.FileHandler(log_file)
@@ -237,6 +240,10 @@ def setup_logging(output_dir: str):
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
     
+    # Remove any existing handlers
+    for handler in logging.getLogger().handlers[:]:
+        logging.getLogger().removeHandler(handler)
+    
     # Add handlers to root logger
     logging.getLogger().addHandler(file_handler)
     logging.getLogger().addHandler(console_handler)
@@ -247,15 +254,33 @@ def setup_logging(output_dir: str):
 def print_sample_outputs(preds: List[str], refs: List[str], doc_texts: List[str], epoch: int, num_samples: int = 5):
     """Print sample model outputs for monitoring progress"""
     logger.info(f"\n{'='*80}")
-    logger.info(f"EPOCH {epoch} - SAMPLE OUTPUTS")
+    logger.info(f"EPOCH {epoch} - DETAILED SAMPLE OUTPUTS")
     logger.info(f"{'='*80}")
     
     for i in range(min(num_samples, len(preds))):
         logger.info(f"\nSample {i+1}:")
-        logger.info(f"Document: {doc_texts[i][:200]}...")
-        logger.info(f"Reference: {refs[i]}")
-        logger.info(f"Generated: {preds[i]}")
-        logger.info("-" * 80)
+        logger.info(f"Input Document (truncated):")
+        logger.info("-" * 40)
+        logger.info(f"{doc_texts[i][:300]}...")
+        logger.info("-" * 40)
+        logger.info(f"Reference Summary:")
+        logger.info(f"{refs[i]}")
+        logger.info("-" * 40)
+        logger.info(f"Generated Summary:")
+        logger.info(f"{preds[i]}")
+        
+        # Calculate individual metrics for this sample
+        scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+        scores = scorer.score(refs[i], preds[i])
+        P, R, F1 = bert_score([preds[i]], [refs[i]], lang='en', verbose=False)
+        
+        logger.info("-" * 40)
+        logger.info(f"Sample Metrics:")
+        logger.info(f"ROUGE-1: {scores['rouge1'].fmeasure:.4f}")
+        logger.info(f"ROUGE-2: {scores['rouge2'].fmeasure:.4f}")
+        logger.info(f"ROUGE-L: {scores['rougeL'].fmeasure:.4f}")
+        logger.info(f"BERT-F1: {F1.mean().item():.4f}")
+        logger.info("=" * 80)
 
 
 def train(model, train_dl, val_dl, tokenizer, config, accelerator):
@@ -323,13 +348,16 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
             
             if accelerator.is_main_process:
                 # Log metrics
-                logger.info(f"\nEpoch {epoch+1} Results:")
-                logger.info(f"  Train Loss: {avg_train_loss:.4f}")
-                logger.info(f"  Val Loss: {val_metrics['loss']:.4f}")
-                logger.info(f"  Val ROUGE-1: {val_metrics['rouge1']:.4f}")
-                logger.info(f"  Val ROUGE-2: {val_metrics['rouge2']:.4f}")
-                logger.info(f"  Val ROUGE-L: {val_metrics['rougeL']:.4f}")
-                logger.info(f"  Val BERT-F1: {val_metrics['bert_f1']:.4f}")
+                logger.info(f"\n{'='*80}")
+                logger.info(f"Epoch {epoch+1} Results:")
+                logger.info(f"{'='*80}")
+                logger.info(f"Training Loss: {avg_train_loss:.4f}")
+                logger.info(f"Validation Metrics:")
+                logger.info(f"  Loss:     {val_metrics['loss']:.4f}")
+                logger.info(f"  ROUGE-1:  {val_metrics['rouge1']:.4f}")
+                logger.info(f"  ROUGE-2:  {val_metrics['rouge2']:.4f}")
+                logger.info(f"  ROUGE-L:  {val_metrics['rougeL']:.4f}")
+                logger.info(f"  BERT-F1:  {val_metrics['bert_f1']:.4f}")
                 
                 # Print sample outputs
                 val_ds = val_dl.dataset if hasattr(val_dl, 'dataset') else None
@@ -337,10 +365,19 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
                     sample_doc_texts = [val_ds[i]['doc_text'] for i in range(min(5, len(val_ds)))]
                     print_sample_outputs(val_preds[:5], val_refs[:5], sample_doc_texts[:5], epoch + 1)
                 
-                # Save metrics to file
+                # Log training history
+                logger.info(f"\nTraining History:")
+                logger.info(f"  Average Training Loss: {np.mean(history['train_loss']):.4f}")
+                logger.info(f"  Best Validation Loss: {min(history['val_loss']):.4f}")
+                logger.info(f"  Best ROUGE-1: {max(history['val_rouge1']):.4f}")
+                logger.info(f"  Best BERT-F1: {max(history['val_bert_f1']):.4f}")
+                
+                # Save metrics to both JSON and log file
                 metrics_file = Path(config.output_dir) / "training_metrics.json"
                 with open(metrics_file, 'w') as f:
                     json.dump(history, f, indent=2)
+                
+                logger.info(f"Metrics saved to: {metrics_file}")
             
             # Early stopping based on validation loss
             if val_metrics['loss'] < best_val_loss:
@@ -365,7 +402,9 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
 
 def eval_only(config, accelerator):
     if accelerator.is_main_process:
-        logger.info("Evaluation mode")
+        logger.info("\n" + "="*80)
+        logger.info("STARTING EVALUATION MODE")
+        logger.info("="*80)
     
     test_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
     model_path = Path(config.output_dir) / "best_model.pt"
@@ -378,25 +417,44 @@ def eval_only(config, accelerator):
     test_ds = ChunkDataset(test_path, tokenizer, config.max_chunks, config.max_target_len)
     test_dl = DataLoader(test_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
     
+    if accelerator.is_main_process:
+        logger.info(f"Loaded test dataset with {len(test_ds)} samples")
+    
     model = BartChunkModel(config.bart_model, config.embedding_dim)
     model.load_state_dict(torch.load(model_path, map_location='cpu'))
     model = model.to(accelerator.device)
+    
+    if accelerator.is_main_process:
+        logger.info(f"Loaded model from: {model_path}")
     
     model, test_dl = accelerator.prepare(model, test_dl)
     metrics, preds, refs = evaluate(accelerator.unwrap_model(model), test_dl, tokenizer, 
                                     config, accelerator, "Test")
     
     if accelerator.is_main_process:
-        logger.info("Test Results:")
-        for k, v in metrics.items():
-            logger.info(f"  {k}: {v:.4f}")
+        logger.info("\n" + "="*80)
+        logger.info("FINAL TEST RESULTS")
+        logger.info("="*80)
+        logger.info("\nMetrics:")
+        logger.info("-"*40)
+        logger.info(f"Loss:      {metrics['loss']:.4f}")
+        logger.info(f"ROUGE-1:   {metrics['rouge1']:.4f}")
+        logger.info(f"ROUGE-2:   {metrics['rouge2']:.4f}")
+        logger.info(f"ROUGE-L:   {metrics['rougeL']:.4f}")
+        logger.info(f"BERT-F1:   {metrics['bert_f1']:.4f}")
         
-        # Print sample outputs
+        # Print detailed sample outputs
+        logger.info("\nDETAILED SAMPLE OUTPUTS")
+        logger.info("="*80)
         print_sample_outputs(preds[:5], refs[:5], [test_ds[i]['doc_text'] for i in range(5)], "final")
         
+        # Save results
         Path("evaluations").mkdir(exist_ok=True)
-        with open("evaluations/results.json", 'w') as f:
+        results_file = Path("evaluations/results.json")
+        with open(results_file, 'w') as f:
             json.dump(metrics, f, indent=2)
+        logger.info(f"\nResults saved to: {results_file}")
+        logger.info("="*80)
 
 
 def compare_base(config, accelerator):
