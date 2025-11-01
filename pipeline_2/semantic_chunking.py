@@ -16,7 +16,7 @@ from accelerate import Accelerator
 from dataclasses import dataclass, field
 from torch.utils.data import Dataset, DataLoader
 import gc
-
+import html
 # Prevent huggingface/tokenizers parallelism warnings when using forks.
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 

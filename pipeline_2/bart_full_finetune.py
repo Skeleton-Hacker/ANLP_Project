@@ -1,13 +1,10 @@
 """
-BART Full Model Fine-tuning with Chunk Embeddings
+BART Fine-tuning with BGE-M3 Chunk Embeddings
 
-This module fine-tunes BART (both encoder and decoder) for summarization using chunk encodings.
-It includes:
-- Loading encoded chunks from pickle files
-- Direct projection layer to map chunk encodings to BART embedding space
-- Fine-tuning both encoder and decoder (or encoder only if specified)
-- Evaluation using ROUGE and BERTScore
-- Comprehensive logging and model checkpointing
+Trains BART on chunk embeddings from BGE-M3 model for summarization.
+Uses accelerate for multi-GPU training.
+
+Run: accelerate launch bart_finetuning.py [--eval-only] [--compare-base]
 """
 
 import logging
@@ -15,9 +12,8 @@ import pickle
 import os
 import argparse
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Tuple
 from datetime import datetime
-from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -29,1077 +25,400 @@ from transformers import (
     get_linear_schedule_with_warmup
 )
 from transformers.modeling_outputs import BaseModelOutput
-from accelerate import Accelerator, DistributedDataParallelKwargs
+from accelerate import Accelerator
 from tqdm import tqdm
 import json
 from rouge_score import rouge_scorer
 from bert_score import score as bert_score
 
-# Setup logging
 logger = logging.getLogger(__name__)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
-@dataclass
-class BartFullConfig:
-    """Configuration for BART full model training."""
-    # Data settings
+class Config:
+    # Data
     encoded_data_dir: str = "chunked_data"
-    output_dir: str = "models/bart_full"
-    logs_dir: str = "logs"
+    output_dir: str = "models/bart"
     
-    # Model settings
-    bart_model_name: str = "facebook/bart-base"
-    encoded_dim: int = 64  # Dimension of encoded chunks from autoencoder
+    # Model
+    bart_model: str = "facebook/bart-base"
+    embedding_dim: int = 1024  # BGE-M3 embedding dimension
     
-    # Training settings
-    batch_size: int = 24
-    num_epochs: int = 300
-    learning_rate: float = 5e-3
+    # Training
+    batch_size: int = 16
+    epochs: int = 20
+    lr: float = 5e-4
     weight_decay: float = 1e-5
     warmup_steps: int = 500
-    gradient_accumulation_steps: int = 2
+    grad_accum_steps: int = 2
     max_grad_norm: float = 1.0
-    early_stopping_patience: int = 5
-    freeze_decoder: bool = True  # Finetune both encoder and decoder
-    
-    # Generation settings
-    max_chunks_per_story: int = 800  # Maximum number of chunks to use per story
-    max_target_length: int = 150  # Maximum length for generated summaries
-    min_target_length: int = 20
-    num_beams: int = 6
-    repetition_penalty: float = 2.5
-    length_penalty: float = 1.0
-    no_repeat_ngram_size: int = 3
-    
-    # Hardware settings
-    num_workers: int = 4
-    
-    # Evaluation settings
+    patience: int = 5
     eval_every_n_steps: int = 500
     
-    # Random seed
+    # Generation
+    max_chunks: int = 800
+    max_target_len: int = 150
+    min_target_len: int = 20
+    num_beams: int = 6
+    
+    # Hardware
     seed: int = 42
 
 
-class ChunkEncodingDataset(Dataset):
-    """Dataset for chunk encodings with summarization targets."""
-    
-    def __init__(
-        self,
-        encoded_data_path: Path,
-        tokenizer: BartTokenizer,
-        max_chunks: int = 800,
-        max_target_length: int = 150
-    ):
-        """Initialize dataset.
-        
-        Args:
-            encoded_data_path: Path to encoded pickle file.
-            tokenizer: BART tokenizer for target sequences.
-            max_chunks: Maximum number of chunks to use per story.
-            max_target_length: Maximum length for target summaries.
-        """
-        self.tokenizer = tokenizer
-        self.max_chunks = max_chunks
-        self.max_target_length = max_target_length
-        
-        # Load encoded data
-        logger.info(f"Loading encoded data from {encoded_data_path}...")
-        with open(encoded_data_path, 'rb') as f:
+class ChunkDataset(Dataset):
+    def __init__(self, pkl_path: Path, tokenizer: BartTokenizer, max_chunks: int, max_tgt_len: int):
+        with open(pkl_path, 'rb') as f:
             data = pickle.load(f)
         
+        self.tokenizer = tokenizer
+        self.max_chunks = max_chunks
+        self.max_tgt_len = max_tgt_len
+        
         self.stories = data['stories']
-        self.metadata = data['metadata']
+        self.samples = [sid for sid, s in self.stories.items() 
+                       if 'chunk_embeddings' in s and len(s['chunk_embeddings']) > 0]
         
-        # Create list of samples (story_id)
-        self.samples = []
-        for story_id, story_data in self.stories.items():
-            if 'encoded_embeddings' in story_data and len(story_data['encoded_embeddings']) > 0:
-                self.samples.append(story_id)
-        
-        logger.info(f"Loaded {len(self.samples)} samples from {len(self.stories)} stories")
+        logger.info(f"Loaded {len(self.samples)} samples")
     
     def __len__(self):
         return len(self.samples)
     
     def __getitem__(self, idx):
         story_id = self.samples[idx]
-        story_data = self.stories[story_id]
+        story = self.stories[story_id]
         
-        # Get encoded embeddings
-        encoded_embeddings = story_data['encoded_embeddings']  # Shape: (num_chunks, encoded_dim)
-        
-        # Truncate to max_chunks
-        if len(encoded_embeddings) > self.max_chunks:
-            encoded_embeddings = encoded_embeddings[:self.max_chunks]
-        
-        # Convert to tensor
-        chunk_encodings = torch.FloatTensor(encoded_embeddings)
+        # Get embeddings and truncate
+        embeddings = story['chunk_embeddings'][:self.max_chunks]
         
         # Get target summary
-        target_text = story_data['document']['summary']['text']
-        
-        # Get document text (concatenated chunks)
-        document_text = ' '.join(story_data['chunks']) if 'chunks' in story_data else ""
-        
-        # Tokenize target
-        target_encoding = self.tokenizer(
-            target_text,
-            max_length=self.max_target_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors='pt'
+        target = story['document']['summary']['text']
+        target_enc = self.tokenizer(
+            target, max_length=self.max_tgt_len, padding='max_length',
+            truncation=True, return_tensors='pt'
         )
         
         return {
-            'chunk_encodings': chunk_encodings,
-            'num_chunks': len(encoded_embeddings),
-            'target_ids': target_encoding['input_ids'].squeeze(0),
-            'target_attention_mask': target_encoding['attention_mask'].squeeze(0),
-            'target_text': target_text,
-            'document_text': document_text
+            'embeddings': torch.FloatTensor(embeddings),
+            'num_chunks': len(embeddings),
+            'target_ids': target_enc['input_ids'].squeeze(0),
+            'target_mask': target_enc['attention_mask'].squeeze(0),
+            'target_text': target,
+            'doc_text': ' '.join(story['chunks']) if 'chunks' in story else ""
         }
 
 
 def collate_fn(batch):
-    """Custom collate function to handle variable-length chunk sequences."""
-    max_num_chunks = max(item['num_chunks'] for item in batch)
-    encoded_dim = batch[0]['chunk_encodings'].shape[1]
+    max_chunks = max(b['num_chunks'] for b in batch)
+    embed_dim = batch[0]['embeddings'].shape[1]
     
-    # Pad chunk encodings
-    padded_chunk_encodings = []
-    attention_masks = []
-    
-    for item in batch:
-        num_chunks = item['num_chunks']
-        chunk_encodings = item['chunk_encodings']
-        
-        # Pad to max_num_chunks
-        if num_chunks < max_num_chunks:
-            padding = torch.zeros(max_num_chunks - num_chunks, encoded_dim)
-            padded_encodings = torch.cat([chunk_encodings, padding], dim=0)
-            attention_mask = torch.cat([
-                torch.ones(num_chunks),
-                torch.zeros(max_num_chunks - num_chunks)
-            ], dim=0)
+    embeddings_list, masks_list = [], []
+    for b in batch:
+        emb = b['embeddings']
+        if len(emb) < max_chunks:
+            emb = torch.cat([emb, torch.zeros(max_chunks - len(emb), embed_dim)])
+            mask = torch.cat([torch.ones(b['num_chunks']), torch.zeros(max_chunks - b['num_chunks'])])
         else:
-            padded_encodings = chunk_encodings
-            attention_mask = torch.ones(num_chunks)
-        
-        padded_chunk_encodings.append(padded_encodings)
-        attention_masks.append(attention_mask)
+            mask = torch.ones(max_chunks)
+        embeddings_list.append(emb)
+        masks_list.append(mask)
     
     return {
-        'chunk_encodings': torch.stack(padded_chunk_encodings),  # (batch, max_chunks, encoded_dim)
-        'chunk_attention_mask': torch.stack(attention_masks),  # (batch, max_chunks)
-        'target_ids': torch.stack([item['target_ids'] for item in batch]),
-        'target_attention_mask': torch.stack([item['target_attention_mask'] for item in batch]),
-        'target_texts': [item['target_text'] for item in batch],
-        'document_texts': [item['document_text'] for item in batch]
+        'embeddings': torch.stack(embeddings_list),
+        'chunk_mask': torch.stack(masks_list),
+        'target_ids': torch.stack([b['target_ids'] for b in batch]),
+        'target_mask': torch.stack([b['target_mask'] for b in batch]),
+        'target_texts': [b['target_text'] for b in batch],
+        'doc_texts': [b['doc_text'] for b in batch]
     }
 
 
-class BartChunkEncoder(nn.Module):
-    """BART model with projection layer for chunk encodings. Can finetune encoder, decoder, or both."""
+class BartChunkModel(nn.Module):
+    def __init__(self, bart_model: str, embed_dim: int):
+        super().__init__()
+        self.bart = BartForConditionalGeneration.from_pretrained(bart_model, use_safetensors=True)
+        self.projection = nn.Linear(embed_dim, self.bart.config.d_model)
+        
+        logger.info(f"Total params: {sum(p.numel() for p in self.parameters()):,}")
+        logger.info(f"Trainable params: {sum(p.numel() for p in self.parameters() if p.requires_grad):,}")
     
-    def __init__(
-        self,
-        bart_model_name: str,
-        encoded_dim: int,
-        freeze_decoder: bool = False
-    ):
-        """Initialize BART chunk encoder model.
+    def forward(self, embeddings, chunk_mask, target_ids, target_mask):
+        encoder_hidden = self.projection(embeddings)
+        encoder_out = BaseModelOutput(last_hidden_state=encoder_hidden)
         
-        Args:
-            bart_model_name: Name of the BART model.
-            encoded_dim: Dimension of encoded chunks.
-            freeze_decoder: Whether to freeze decoder parameters.
-        """
-        super(BartChunkEncoder, self).__init__()
-        
-        # Load BART model using safetensors to avoid torch.load vulnerability
-        self.bart = BartForConditionalGeneration.from_pretrained(
-            bart_model_name,
-            use_safetensors=True
-        )
-        self.bart_hidden_dim = self.bart.config.d_model
-        
-        # Simple projection layer: encoded_dim -> bart_hidden_dim
-        self.projection = nn.Linear(encoded_dim, self.bart_hidden_dim)
-        
-        # Freeze decoder if specified
-        if freeze_decoder:
-            logger.info("Freezing BART decoder parameters...")
-            for param in self.bart.model.decoder.parameters():
-                param.requires_grad = False
-            
-            # Also freeze lm_head
-            for param in self.bart.lm_head.parameters():
-                param.requires_grad = False
-        else:
-            logger.info("Fine-tuning both encoder and decoder...")
-        
-        # Log trainable parameters
-        total_params = sum(p.numel() for p in self.parameters())
-        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        logger.info(f"Total parameters: {total_params:,}")
-        logger.info(f"Trainable parameters: {trainable_params:,}")
-        logger.info(f"Frozen parameters: {total_params - trainable_params:,}")
-    
-    def forward(
-        self,
-        chunk_encodings: torch.Tensor,
-        chunk_attention_mask: torch.Tensor,
-        target_ids: torch.Tensor,
-        target_attention_mask: torch.Tensor
-    ):
-        """Forward pass.
-        
-        Args:
-            chunk_encodings: (batch, num_chunks, encoded_dim)
-            chunk_attention_mask: (batch, num_chunks)
-            target_ids: (batch, target_length)
-            target_attention_mask: (batch, target_length)
-            
-        Returns:
-            Loss and logits.
-        """
-        # Project chunk encodings to BART embedding space
-        encoder_hidden_states = self.projection(chunk_encodings)  # (batch, num_chunks, bart_hidden_dim)
-        
-        # Create encoder outputs
-        encoder_outputs = BaseModelOutput(
-            last_hidden_state=encoder_hidden_states
-        )
-        
-        # Forward through decoder
-        # BART handles decoder input shifting internally when labels are provided
         outputs = self.bart(
-            encoder_outputs=encoder_outputs,
-            attention_mask=chunk_attention_mask,
-            decoder_attention_mask=target_attention_mask,
+            encoder_outputs=encoder_out,
+            attention_mask=chunk_mask,
+            decoder_attention_mask=target_mask,
             labels=target_ids,
             return_dict=True
         )
-        
         return outputs
     
-    def generate(
-        self,
-        chunk_encodings: torch.Tensor,
-        chunk_attention_mask: torch.Tensor,
-        max_length: int = 150,
-        num_beams: int = 6,
-        repetition_penalty: float = 2.5,
-        length_penalty: float = 1.0,
-        no_repeat_ngram_size: int = 3,
-        min_length: int = 20
-    ):
-        """Generate summaries from chunk encodings.
+    def generate(self, embeddings, chunk_mask, max_len=150, min_len=20, num_beams=6):
+        encoder_hidden = self.projection(embeddings)
+        encoder_out = BaseModelOutput(last_hidden_state=encoder_hidden)
         
-        Args:
-            chunk_encodings: (batch, num_chunks, encoded_dim)
-            chunk_attention_mask: (batch, num_chunks)
-            max_length: Maximum generation length.
-            num_beams: Number of beams for beam search.
-            repetition_penalty: Repetition penalty.
-            length_penalty: Length penalty.
-            no_repeat_ngram_size: No repeat n-gram size.
-            min_length: Minimum generation length.
-            
-        Returns:
-            Generated token IDs.
-        """
-        # Project chunk encodings to BART embedding space
-        encoder_hidden_states = self.projection(chunk_encodings)
-        
-        # Create encoder outputs
-        encoder_outputs = BaseModelOutput(
-            last_hidden_state=encoder_hidden_states
-        )
-        
-        # Generate
-        generated_ids = self.bart.generate(
-            encoder_outputs=encoder_outputs,
-            attention_mask=chunk_attention_mask,
-            max_length=max_length,
-            min_length=min_length,
+        return self.bart.generate(
+            encoder_outputs=encoder_out,
+            attention_mask=chunk_mask,
+            max_length=max_len,
+            min_length=min_len,
             num_beams=num_beams,
-            repetition_penalty=repetition_penalty,
-            length_penalty=length_penalty,
-            no_repeat_ngram_size=no_repeat_ngram_size,
             early_stopping=True
         )
-        
-        return generated_ids
 
 
-def set_seed(seed: int):
-    """Set random seed for reproducibility."""
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-
-
-def compute_metrics(predictions: List[str], references: List[str]) -> Dict[str, float]:
-    """Compute ROUGE and BERTScore metrics.
-    
-    Args:
-        predictions: List of predicted summaries.
-        references: List of reference summaries.
-        
-    Returns:
-        Dictionary of metrics.
-    """
-    # ROUGE scores
+def compute_metrics(preds: List[str], refs: List[str]) -> Dict:
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
-    rouge_scores = {
-        'rouge1': [],
-        'rouge2': [],
-        'rougeL': []
-    }
+    rouge_scores = {k: [] for k in ['rouge1', 'rouge2', 'rougeL']}
     
-    for pred, ref in zip(predictions, references):
+    for pred, ref in zip(preds, refs):
         scores = scorer.score(ref, pred)
         rouge_scores['rouge1'].append(scores['rouge1'].fmeasure)
         rouge_scores['rouge2'].append(scores['rouge2'].fmeasure)
         rouge_scores['rougeL'].append(scores['rougeL'].fmeasure)
     
-    rouge_results = {
+    P, R, F1 = bert_score(preds, refs, lang='en', verbose=False)
+    
+    return {
         'rouge1': np.mean(rouge_scores['rouge1']),
         'rouge2': np.mean(rouge_scores['rouge2']),
-        'rougeL': np.mean(rouge_scores['rougeL'])
+        'rougeL': np.mean(rouge_scores['rougeL']),
+        'bert_p': P.mean().item(),
+        'bert_r': R.mean().item(),
+        'bert_f1': F1.mean().item(),
     }
-    
-    # BERTScore
-    P, R, F1 = bert_score(predictions, references, lang='en', verbose=False)
-    bert_results = {
-        'bertscore_precision': P.mean().item(),
-        'bertscore_recall': R.mean().item(),
-        'bertscore_f1': F1.mean().item()
-    }
-    
-    return {**rouge_results, **bert_results}
 
 
-def evaluate_model(
-    model: BartChunkEncoder,
-    dataloader: DataLoader,
-    tokenizer: BartTokenizer,
-    config: BartFullConfig,
-    accelerator: Accelerator,
-    desc: str = "Evaluation"
-) -> Tuple[Dict[str, float], List[str], List[str]]:
-    """Evaluate model on a dataset.
-    
-    Args:
-        model: BART chunk encoder model.
-        dataloader: DataLoader for evaluation.
-        tokenizer: BART tokenizer.
-        config: Configuration.
-        accelerator: Accelerator instance.
-        desc: Description for progress bar.
-        
-    Returns:
-        Tuple of (metrics, predictions, references).
-    """
+def evaluate(model, dataloader, tokenizer, config, accelerator, desc="Eval"):
     model.eval()
-    all_predictions = []
-    all_references = []
-    
-    eval_pbar = tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process)
+    preds, refs = [], []
     
     with torch.no_grad():
-        for batch in eval_pbar:
-            chunk_encodings = batch['chunk_encodings']
-            chunk_attention_mask = batch['chunk_attention_mask']
-            target_texts = batch['target_texts']
-            
-            # Generate
-            generated_ids = model.generate(
-                chunk_encodings=chunk_encodings,
-                chunk_attention_mask=chunk_attention_mask,
-                max_length=config.max_target_length,
-                min_length=config.min_target_length,
-                num_beams=config.num_beams,
-                repetition_penalty=config.repetition_penalty,
-                length_penalty=config.length_penalty,
-                no_repeat_ngram_size=config.no_repeat_ngram_size
+        for batch in tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process):
+            gen_ids = model.generate(
+                batch['embeddings'], batch['chunk_mask'],
+                max_len=config.max_target_len,
+                min_len=config.min_target_len,
+                num_beams=config.num_beams
             )
-            
-            # Decode predictions
-            predictions = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-            
-            all_predictions.extend(predictions)
-            all_references.extend(target_texts)
+            preds.extend(tokenizer.batch_decode(gen_ids, skip_special_tokens=True))
+            refs.extend(batch['target_texts'])
     
-    # Compute metrics
-    metrics = compute_metrics(all_predictions, all_references)
-    
-    return metrics, all_predictions, all_references
+    return compute_metrics(preds, refs), preds, refs
 
 
-def train_model(
-    model: BartChunkEncoder,
-    train_dataloader: DataLoader,
-    val_dataloader: DataLoader,
-    tokenizer: BartTokenizer,
-    config: BartFullConfig,
-    accelerator: Accelerator,
-    log_file: Path
-) -> BartChunkEncoder:
-    """Train the BART chunk encoder model.
+def train(model, train_dl, val_dl, tokenizer, config, accelerator):
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    optimizer = optim.AdamW(trainable, lr=config.lr, weight_decay=config.weight_decay)
     
-    Args:
-        model: BART chunk encoder model.
-        train_dataloader: Training dataloader.
-        val_dataloader: Validation dataloader.
-        tokenizer: BART tokenizer.
-        config: Configuration.
-        accelerator: Accelerator instance.
-        log_file: Path to log file.
-        
-    Returns:
-        Trained model.
-    """
-    # Optimizer (only optimize parameters that require grad)
-    trainable_params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = optim.AdamW(
-        trainable_params,
-        lr=config.learning_rate,
-        weight_decay=config.weight_decay
+    total_steps = len(train_dl) * config.epochs // config.grad_accum_steps
+    scheduler = get_linear_schedule_with_warmup(optimizer, config.warmup_steps, total_steps)
+    
+    model, optimizer, train_dl, val_dl, scheduler = accelerator.prepare(
+        model, optimizer, train_dl, val_dl, scheduler
     )
     
-    # Learning rate scheduler
-    num_training_steps = len(train_dataloader) * config.num_epochs // config.gradient_accumulation_steps
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=config.warmup_steps,
-        num_training_steps=num_training_steps
-    )
-    
-    # Prepare with accelerator
-    model, optimizer, train_dataloader, val_dataloader, scheduler = accelerator.prepare(
-        model, optimizer, train_dataloader, val_dataloader, scheduler
-    )
-    
-    # Training loop
-    best_val_loss = float('inf')
-    best_val_rouge = 0.0
-    patience_counter = 0
+    best_rouge = 0
+    patience = 0
     global_step = 0
     
-    if accelerator.is_main_process:
-        logger.info("Starting training...")
-        logger.info(f"Number of training steps: {num_training_steps}")
-        logger.info(f"Number of epochs: {config.num_epochs}")
-        logger.info(f"Batch size: {config.batch_size}")
-        logger.info(f"Gradient accumulation steps: {config.gradient_accumulation_steps}")
-    
-    for epoch in range(config.num_epochs):
+    for epoch in range(config.epochs):
         model.train()
-        epoch_loss = 0.0
-        num_batches = 0
+        epoch_loss = 0
         
-        train_pbar = tqdm(
-            train_dataloader,
-            desc=f"Epoch {epoch + 1}/{config.num_epochs}",
-            disable=not accelerator.is_main_process
-        )
-        
-        for step, batch in enumerate(train_pbar):
-            chunk_encodings = batch['chunk_encodings']
-            chunk_attention_mask = batch['chunk_attention_mask']
-            target_ids = batch['target_ids']
-            target_attention_mask = batch['target_attention_mask']
+        pbar = tqdm(train_dl, desc=f"Epoch {epoch+1}", disable=not accelerator.is_main_process)
+        for step, batch in enumerate(pbar):
+            outputs = model(batch['embeddings'], batch['chunk_mask'], 
+                          batch['target_ids'], batch['target_mask'])
+            loss = outputs.loss / config.grad_accum_steps
             
-            # Forward pass
-            outputs = model(
-                chunk_encodings=chunk_encodings,
-                chunk_attention_mask=chunk_attention_mask,
-                target_ids=target_ids,
-                target_attention_mask=target_attention_mask
-            )
-            
-            loss = outputs.loss / config.gradient_accumulation_steps
-            
-            # Backward pass
             accelerator.backward(loss)
-            
-            # Update weights
-            if (step + 1) % config.gradient_accumulation_steps == 0:
+            if (step + 1) % config.grad_accum_steps == 0:
                 accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
                 global_step += 1
             
-            epoch_loss += loss.item() * config.gradient_accumulation_steps
-            num_batches += 1
+            epoch_loss += loss.item() * config.grad_accum_steps
+            pbar.set_postfix({'loss': f"{loss.item() * config.grad_accum_steps:.4f}"})
             
-            # Update progress bar
-            train_pbar.set_postfix({
-                'loss': f"{loss.item() * config.gradient_accumulation_steps:.4f}",
-                'lr': f"{scheduler.get_last_lr()[0]:.2e}"
-            })
-            
-            # Periodic evaluation
             if global_step > 0 and global_step % config.eval_every_n_steps == 0:
+                metrics, _, _ = evaluate(accelerator.unwrap_model(model), val_dl, tokenizer, 
+                                        config, accelerator, "Val")
                 if accelerator.is_main_process:
-                    logger.info(f"\nRunning evaluation at step {global_step}...")
+                    logger.info(f"Step {global_step}: {metrics}")
                 
-                val_metrics, _, _ = evaluate_model(
-                    accelerator.unwrap_model(model),
-                    val_dataloader,
-                    tokenizer,
-                    config,
-                    accelerator,
-                    desc="Validation"
-                )
-                
-                if accelerator.is_main_process:
-                    logger.info(f"Step {global_step} Validation Metrics:")
-                    for metric_name, metric_value in val_metrics.items():
-                        logger.info(f"  {metric_name}: {metric_value:.4f}")
+                avg_rouge = np.mean([metrics['rouge1'], metrics['rouge2'], metrics['rougeL']])
+                if avg_rouge > best_rouge:
+                    best_rouge = avg_rouge
+                    patience = 0
+                    model_path = Path(config.output_dir) / "best_model.pt"
+                    torch.save(accelerator.unwrap_model(model).state_dict(), model_path)
+                else:
+                    patience += 1
+                    if patience >= config.patience:
+                        if accelerator.is_main_process:
+                            logger.info(f"Early stopping at step {global_step}")
+                        return
                 
                 model.train()
         
-        # End of epoch
-        avg_epoch_loss = epoch_loss / num_batches
-        
         if accelerator.is_main_process:
-            logger.info(f"\nEpoch {epoch + 1} completed. Average loss: {avg_epoch_loss:.4f}")
-            logger.info("Running validation...")
-        
-        # Validation
-        
-        accelerator.wait_for_everyone()
-    
-    if accelerator.is_main_process:
-        logger.info("Training completed!")
-        logger.info(f"Best validation ROUGE (avg): {best_val_rouge:.4f}")
-        logger.info(f"Best validation loss: {best_val_loss:.4f}")
-    
-    return model
+            logger.info(f"Epoch {epoch+1} avg loss: {epoch_loss/len(train_dl):.4f}")
 
 
-def evaluate_finetuned(
-    config: BartFullConfig,
-    accelerator: Accelerator,
-    log_file: Path
-):
-    """Evaluate fine-tuned model on test set.
-    
-    Args:
-        config: Configuration.
-        accelerator: Accelerator instance.
-        log_file: Path to log file.
-    """
+def eval_only(config, accelerator):
     if accelerator.is_main_process:
-        logger.info("=" * 50)
-        logger.info("Evaluating fine-tuned model on test set")
+        logger.info("Evaluation mode")
     
-    # Load test data
-    test_data_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
-    if not test_data_path.exists():
-        logger.error(f"Test data not found at {test_data_path}")
+    test_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
+    model_path = Path(config.output_dir) / "best_model.pt"
+    
+    if not test_path.exists() or not model_path.exists():
+        logger.error("Test data or model not found")
         return
     
-    # Check if model exists
-    best_model_path = Path(config.output_dir) / "best_model" / "model.pt"
-    if not best_model_path.exists():
-        logger.error(f"Fine-tuned model not found at {best_model_path}")
-        logger.error("Please train the model first!")
+    tokenizer = BartTokenizer.from_pretrained(config.bart_model, use_safetensors=True)
+    test_ds = ChunkDataset(test_path, tokenizer, config.max_chunks, config.max_target_len)
+    test_dl = DataLoader(test_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
+    
+    model = BartChunkModel(config.bart_model, config.embedding_dim)
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model = model.to(accelerator.device)
+    
+    model, test_dl = accelerator.prepare(model, test_dl)
+    metrics, preds, refs = evaluate(accelerator.unwrap_model(model), test_dl, tokenizer, 
+                                    config, accelerator, "Test")
+    
+    if accelerator.is_main_process:
+        logger.info("Test Results:")
+        for k, v in metrics.items():
+            logger.info(f"  {k}: {v:.4f}")
+        
+        Path("evaluations").mkdir(exist_ok=True)
+        with open("evaluations/results.json", 'w') as f:
+            json.dump(metrics, f, indent=2)
+
+
+def compare_base(config, accelerator):
+    if accelerator.is_main_process:
+        logger.info("Comparing finetuned vs base model")
+    
+    test_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
+    model_path = Path(config.output_dir) / "best_model.pt"
+    
+    if not test_path.exists() or not model_path.exists():
+        logger.error("Test data or model not found")
         return
     
-    # Initialize tokenizer using safetensors
-    tokenizer = BartTokenizer.from_pretrained(
-        config.bart_model_name,
-        use_safetensors=True
-    )
+    tokenizer = BartTokenizer.from_pretrained(config.bart_model, use_safetensors=True)
+    test_ds = ChunkDataset(test_path, tokenizer, config.max_chunks, config.max_target_len)
+    test_dl = DataLoader(test_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
     
-    # Create test dataset and dataloader
-    test_dataset = ChunkEncodingDataset(
-        test_data_path,
-        tokenizer,
-        max_chunks=config.max_chunks_per_story,
-        max_target_length=config.max_target_length
-    )
+    # Finetuned model
+    model = BartChunkModel(config.bart_model, config.embedding_dim)
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model, test_dl = accelerator.prepare(model, test_dl)
+    ft_metrics, ft_preds, ft_refs = evaluate(accelerator.unwrap_model(model), test_dl, 
+                                             tokenizer, config, accelerator, "Finetuned")
     
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=config.batch_size,
-        shuffle=False,
-        num_workers=config.num_workers,
-        collate_fn=collate_fn
-    )
-    
-    # Load fine-tuned model
-    finetuned_model = BartChunkEncoder(
-        bart_model_name=config.bart_model_name,
-        encoded_dim=config.encoded_dim,
-        freeze_decoder=config.freeze_decoder
-    )
-    
-    if accelerator.is_main_process:
-        logger.info(f"Loading fine-tuned model from {best_model_path}")
-    
-    finetuned_model.load_state_dict(torch.load(best_model_path, map_location='cpu'))
-    finetuned_model = finetuned_model.to(accelerator.device)
-    
-    # Prepare with accelerator
-    finetuned_model, test_dataloader = accelerator.prepare(finetuned_model, test_dataloader)
-    
-    # Evaluate
-    test_metrics, test_preds, test_refs = evaluate_model(
-        accelerator.unwrap_model(finetuned_model),
-        test_dataloader,
-        tokenizer,
-        config,
-        accelerator,
-        desc="Test Set Evaluation"
-    )
-    
-    if accelerator.is_main_process:
-        logger.info("\n" + "=" * 50)
-        logger.info("Test Set Results (Fine-tuned Model):")
-        logger.info("=" * 50)
-        for metric_name, metric_value in test_metrics.items():
-            logger.info(f"{metric_name}: {metric_value:.4f}")
-        
-        # Save test results
-        results_path = Path(config.output_dir) / "test_results.json"
-        with open(results_path, 'w') as f:
-            json.dump(test_metrics, f, indent=2)
-        
-        logger.info(f"\nTest results saved to {results_path}")
-        
-        # Save sample predictions
-        sample_preds_path = Path(config.output_dir) / "test_sample_predictions.txt"
-        with open(sample_preds_path, 'w') as f:
-            for i in range(min(10, len(test_preds))):
-                f.write(f"=== Test Example {i + 1} ===\n")
-                f.write(f"Reference: {test_refs[i]}\n")
-                f.write(f"Prediction: {test_preds[i]}\n\n")
-        
-        logger.info(f"Sample predictions saved to {sample_preds_path}")
-
-
-def evaluate_base_model(
-    base_model: BartForConditionalGeneration,
-    dataloader: DataLoader,
-    tokenizer: BartTokenizer,
-    config: BartFullConfig,
-    accelerator: Accelerator,
-    desc: str = "Base Model Evaluation"
-) -> Tuple[Dict[str, float], List[str], List[str]]:
-    """Evaluate a plain base BART model (no finetuning) using full document text as input.
-    
-    Args:
-        base_model: Base BART model.
-        dataloader: DataLoader for evaluation.
-        tokenizer: BART tokenizer.
-        config: Configuration.
-        accelerator: Accelerator instance.
-        desc: Description for progress bar.
-        
-    Returns:
-        Tuple of (metrics, predictions, references).
-    """
-    base_model.eval()
-    all_predictions = []
-    all_references = []
-    
-    eval_pbar = tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process)
-    
-    # Maximum input length for BART (leave room for generation)
-    max_input_length = 1024
-    
-    with torch.no_grad():
-        for batch in eval_pbar:
-            document_texts = batch['document_texts']
-            target_texts = batch['target_texts']
-            
-            # Tokenize document texts
-            input_encodings = tokenizer(
-                document_texts,
-                max_length=max_input_length,
-                padding='max_length',
-                truncation=True,
-                return_tensors='pt'
-            ).to(accelerator.device)
-            
-            # Generate
-            generated_ids = base_model.generate(
-                input_ids=input_encodings['input_ids'],
-                attention_mask=input_encodings['attention_mask'],
-                max_length=config.max_target_length,
-                min_length=config.min_target_length,
-                num_beams=config.num_beams,
-                repetition_penalty=config.repetition_penalty,
-                length_penalty=config.length_penalty,
-                no_repeat_ngram_size=config.no_repeat_ngram_size,
-                early_stopping=True
-            )
-            
-            # Decode predictions
-            predictions = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-            
-            all_predictions.extend(predictions)
-            all_references.extend(target_texts)
-    
-    metrics = compute_metrics(all_predictions, all_references)
-    return metrics, all_predictions, all_references
-
-
-def compare_finetuned_vs_base(
-    config: BartFullConfig,
-    accelerator: Accelerator,
-    log_file: Path
-):
-    """Load the finetuned model and the plain base model, evaluate both on the test set, and report a comparison.
-    
-    Args:
-        config: Configuration.
-        accelerator: Accelerator instance.
-        log_file: Path to log file.
-    """
-    if accelerator.is_main_process:
-        logger.info("=" * 50)
-        logger.info("Comparing Fine-tuned Model vs Base Model")
-
-    test_data_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
-    if not test_data_path.exists():
-        logger.error(f"Test data not found at {test_data_path}")
-        return
-
-    best_model_path = Path(config.output_dir) / "best_model" / "model.pt"
-    if not best_model_path.exists():
-        logger.error(f"Fine-tuned model not found at {best_model_path}")
-        logger.error("Please train the model first!")
-        return
-
-    # Tokenizer using safetensors
-    tokenizer = BartTokenizer.from_pretrained(
-        config.bart_model_name,
-        use_safetensors=True
-    )
-
-    # Dataset/Dataloader
-    test_dataset = ChunkEncodingDataset(
-        test_data_path,
-        tokenizer,
-        max_chunks=config.max_chunks_per_story,
-        max_target_length=config.max_target_length
-    )
-
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=config.batch_size,
-        shuffle=False,
-        num_workers=config.num_workers,
-        collate_fn=collate_fn
-    )
-
-    # Load finetuned model
-    finetuned_model = BartChunkEncoder(
-        bart_model_name=config.bart_model_name,
-        encoded_dim=config.encoded_dim,
-        freeze_decoder=config.freeze_decoder
-    )
-    if accelerator.is_main_process:
-        logger.info(f"Loading fine-tuned model from {best_model_path}")
-
-    finetuned_model.load_state_dict(torch.load(best_model_path, map_location='cpu'))
-    finetuned_model = finetuned_model.to(accelerator.device)
-
-    # Load base model (plain BART)
-    if accelerator.is_main_process:
-        logger.info(f"Loading base BART model: {config.bart_model_name}")
-
-    # Load base BART model using safetensors to avoid torch.load vulnerability
-    base_model = BartForConditionalGeneration.from_pretrained(
-        config.bart_model_name,
-        use_safetensors=True
-    )
+    # Base model
+    base_model = BartForConditionalGeneration.from_pretrained(config.bart_model, use_safetensors=True)
     base_model = base_model.to(accelerator.device)
-
-    # Prepare models/dataloaders for distributed env
-    finetuned_model, base_model, test_dataloader = accelerator.prepare(
-        finetuned_model, base_model, test_dataloader
-    )
-
-    # Create separate dataloader for base model with smaller batch size to save memory
-    base_dataloader = DataLoader(
-        test_dataset,
-        batch_size=4,  # Smaller batch size for base model
-        shuffle=False,
-        num_workers=config.num_workers,
-        collate_fn=collate_fn
-    )
-    base_dataloader = accelerator.prepare(base_dataloader)
-
-    # Evaluate finetuned model
-    finetuned_metrics, finetuned_preds, finetuned_refs = evaluate_model(
-        accelerator.unwrap_model(finetuned_model),
-        test_dataloader,
-        tokenizer,
-        config,
-        accelerator,
-        desc="Fine-tuned Model Evaluation"
-    )
-
-    # Evaluate base model
-    base_metrics, base_preds, base_refs = evaluate_base_model(
-        accelerator.unwrap_model(base_model),
-        base_dataloader,
-        tokenizer,
-        config,
-        accelerator,
-        desc="Base Model Evaluation"
-    )
-
-    # Save and log comparison
-    comparison = {
-        'finetuned_metrics': finetuned_metrics,
-        'base_metrics': base_metrics,
-        'max_input_length_base_model': 512
-    }
-
+    base_model.eval()
+    
+    base_preds, base_refs = [], []
+    with torch.no_grad():
+        for batch in tqdm(test_dl, desc="Base", disable=not accelerator.is_main_process):
+            input_enc = tokenizer(batch['doc_texts'], max_length=512, padding='max_length',
+                                 truncation=True, return_tensors='pt').to(accelerator.device)
+            gen_ids = base_model.generate(input_enc['input_ids'], input_enc['attention_mask'],
+                                         max_length=config.max_target_len)
+            base_preds.extend(tokenizer.batch_decode(gen_ids, skip_special_tokens=True))
+            base_refs.extend(batch['target_texts'])
+    
+    base_metrics = compute_metrics(base_preds, base_refs)
+    
     if accelerator.is_main_process:
-        logger.info("\n" + "=" * 50)
-        logger.info("COMPARISON RESULTS")
-        logger.info("=" * 50)
-        
-        # Create evaluations directory
-        evaluations_dir = Path("evaluations")
-        evaluations_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Save comparison results
-        comparison_path = evaluations_dir / "bart_full_finetuned_vs_base_comparison.json"
-        with open(comparison_path, 'w') as f:
-            json.dump(comparison, f, indent=2)
-        
-        logger.info(f"\nComparison saved to {comparison_path}")
-        
-        # Create comparison table
-        logger.info("\nMetric Comparison:")
-        logger.info("-" * 70)
-        logger.info(f"{'Metric':<25} {'Fine-tuned':>15} {'Base':>15} {'Improvement':>15}")
-        logger.info("-" * 70)
-        
-        for metric in ['rouge1', 'rouge2', 'rougeL', 'bertscore_precision', 'bertscore_recall', 'bertscore_f1']:
-            finetuned_val = finetuned_metrics[metric]
+        logger.info("Comparison Results:")
+        logger.info(f"{'Metric':<15} {'Finetuned':>12} {'Base':>12} {'Improvement':>12}")
+        logger.info("-" * 55)
+        for metric in ['rouge1', 'rouge2', 'rougeL', 'bert_f1']:
+            ft_val = ft_metrics[metric]
             base_val = base_metrics[metric]
-            improvement = ((finetuned_val - base_val) / base_val * 100) if base_val != 0 else 0
-            
-            logger.info(f"{metric:<25} {finetuned_val:>15.4f} {base_val:>15.4f} {improvement:>14.2f}%")
+            improvement = ((ft_val - base_val) / base_val * 100) if base_val else 0
+            logger.info(f"{metric:<15} {ft_val:>12.4f} {base_val:>12.4f} {improvement:>11.1f}%")
         
-        logger.info("-" * 70)
-        
-        # Save comparison table to file
-        table_path = evaluations_dir / "bart_full_comparison_table.txt"
-        with open(table_path, 'w') as f:
-            f.write("COMPARISON: Fine-tuned BART (Full Model) vs Base BART\n")
-            f.write("=" * 70 + "\n\n")
-            f.write(f"{'Metric':<25} {'Fine-tuned':>15} {'Base':>15} {'Improvement':>15}\n")
-            f.write("-" * 70 + "\n")
-            
-            for metric in ['rouge1', 'rouge2', 'rougeL', 'bertscore_precision', 'bertscore_recall', 'bertscore_f1']:
-                finetuned_val = finetuned_metrics[metric]
-                base_val = base_metrics[metric]
-                improvement = ((finetuned_val - base_val) / base_val * 100) if base_val != 0 else 0
-                
-                f.write(f"{metric:<25} {finetuned_val:>15.4f} {base_val:>15.4f} {improvement:>14.2f}%\n")
-            
-            f.write("-" * 70 + "\n")
-        
-        logger.info(f"Comparison table saved to {table_path}")
-        
-        # Save sample predictions from both models
-        sample_path = evaluations_dir / "bart_full_sample_predictions.txt"
-        with open(sample_path, 'w') as f:
-            f.write("Sample Predictions: Fine-tuned vs Base Model\n")
-            f.write("=" * 70 + "\n\n")
-            
-            for i in range(min(10, len(finetuned_preds))):
-                f.write(f"=== Example {i + 1} ===\n")
-                f.write(f"Reference:\n{finetuned_refs[i]}\n\n")
-                f.write(f"Fine-tuned Model:\n{finetuned_preds[i]}\n\n")
-                f.write(f"Base Model:\n{base_preds[i]}\n\n")
-                f.write("-" * 70 + "\n\n")
-        
-        logger.info(f"Sample predictions comparison saved to {sample_path}")
-
-    return comparison
+        Path("evaluations").mkdir(exist_ok=True)
+        with open("evaluations/comparison.json", 'w') as f:
+            json.dump({'finetuned': ft_metrics, 'base': base_metrics}, f, indent=2)
 
 
 def main():
-    """Main training and evaluation pipeline."""
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
-    # Configuration
-    config = BartFullConfig()
-    
-    # Initialize Accelerator with kwargs for DDP
-    accelerator = Accelerator(
-        gradient_accumulation_steps=config.gradient_accumulation_steps,
-        kwargs_handlers=[
-            DistributedDataParallelKwargs(find_unused_parameters=True)
-        ]
-    )
-
-    # Command-line arguments: allow eval-only or comparison modes
-    parser = argparse.ArgumentParser(description="BART full model (encoder + decoder) training/evaluation")
-    parser.add_argument('--eval-only', action='store_true', help='Only evaluate the saved finetuned model on the test set and exit')
-    parser.add_argument('--compare-base', action='store_true', help='Evaluate finetuned model and the plain base model and save a comparison')
-    parser.add_argument('--model-path', type=str, default=None, help='Path to a saved finetuned model.pt (optional)')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--eval-only', action='store_true')
+    parser.add_argument('--compare-base', action='store_true')
     args = parser.parse_args()
     
-    # Set seed
-    set_seed(config.seed)
+    config = Config()
+    torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
+    
+    from accelerate.utils import DistributedDataParallelKwargs
+
+    # Create DDP kwargs with find_unused_parameters=True
+    ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+
+    # Pass to Accelerator via kwargs_handlers
+    accelerator = Accelerator(
+        gradient_accumulation_steps=config.grad_accum_steps,
+        kwargs_handlers=[ddp_kwargs]
+    )
     
     if accelerator.is_main_process:
-        logger.info("=" * 50)
-        training_mode = "Encoder Only" if config.freeze_decoder else "Full Model (Encoder + Decoder)"
-        logger.info(f"BART Full Model Fine-tuning ({training_mode})")
-        logger.info("=" * 50)
-        logger.info(f"Configuration:")
-        logger.info(f"  Model: {config.bart_model_name}")
-        logger.info(f"  Encoded dim: {config.encoded_dim}")
-        logger.info(f"  Freeze decoder: {config.freeze_decoder}")
-        logger.info(f"  Batch size: {config.batch_size}")
-        logger.info(f"  Learning rate: {config.learning_rate}")
-        logger.info(f"  Number of epochs: {config.num_epochs}")
-        logger.info(f"  Max chunks per story: {config.max_chunks_per_story}")
-        logger.info(f"  Output directory: {config.output_dir}")
-        logger.info("=" * 50)
-        
-        # Create directories
+        logger.info("=" * 60)
+        logger.info("BART Finetuning with BGE-M3 Embeddings")
+        logger.info("=" * 60)
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
-        Path(config.logs_dir).mkdir(parents=True, exist_ok=True)
     
     accelerator.wait_for_everyone()
     
-    # Setup log file
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = Path(config.logs_dir) / f"bart_full_training_{timestamp}.log"
-    
-    if accelerator.is_main_process:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logger.addHandler(file_handler)
-
-    # If user requested eval-only or comparison, run that and exit early
     if args.eval_only:
-        evaluate_finetuned(config, accelerator, log_file)
+        eval_only(config, accelerator)
         return
-
+    
     if args.compare_base:
-        compare_finetuned_vs_base(config, accelerator, log_file)
+        compare_base(config, accelerator)
         return
     
-    # Load data
-    if accelerator.is_main_process:
-        logger.info("Loading datasets...")
+    # Training
+    tokenizer = BartTokenizer.from_pretrained(config.bart_model, use_safetensors=True)
     
-    train_data_path = Path(config.encoded_data_dir) / "train_chunks_encoded.pkl"
-    val_data_path = Path(config.encoded_data_dir) / "validation_chunks_encoded.pkl"
+    train_path = Path(config.encoded_data_dir) / "train_chunks_encoded.pkl"
+    val_path = Path(config.encoded_data_dir) / "validation_chunks_encoded.pkl"
     
-    if not train_data_path.exists() or not val_data_path.exists():
-        logger.error(f"Training or validation data not found!")
+    if not train_path.exists() or not val_path.exists():
+        logger.error("Training or validation data not found")
         return
     
-    # Initialize tokenizer using safetensors
-    tokenizer = BartTokenizer.from_pretrained(
-        config.bart_model_name,
-        use_safetensors=True
-    )
+    train_ds = ChunkDataset(train_path, tokenizer, config.max_chunks, config.max_target_len)
+    val_ds = ChunkDataset(val_path, tokenizer, config.max_chunks, config.max_target_len)
     
-    # Create datasets
-    train_dataset = ChunkEncodingDataset(
-        train_data_path,
-        tokenizer,
-        max_chunks=config.max_chunks_per_story,
-        max_target_length=config.max_target_length
-    )
+    train_dl = DataLoader(train_ds, batch_size=config.batch_size, shuffle=True, collate_fn=collate_fn)
+    val_dl = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
     
-    val_dataset = ChunkEncodingDataset(
-        val_data_path,
-        tokenizer,
-        max_chunks=config.max_chunks_per_story,
-        max_target_length=config.max_target_length
-    )
-    
-    # Create dataloaders
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=config.batch_size,
-        shuffle=True,
-        num_workers=config.num_workers,
-        collate_fn=collate_fn
-    )
-    
-    val_dataloader = DataLoader(
-        val_dataset,
-        batch_size=config.batch_size,
-        shuffle=False,
-        num_workers=config.num_workers,
-        collate_fn=collate_fn
-    )
+    model = BartChunkModel(config.bart_model, config.embedding_dim)
     
     if accelerator.is_main_process:
-        logger.info(f"Training samples: {len(train_dataset)}")
-        logger.info(f"Validation samples: {len(val_dataset)}")
+        logger.info(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+        logger.info("Starting training...")
     
-    # Initialize model
-    model = BartChunkEncoder(
-        bart_model_name=config.bart_model_name,
-        encoded_dim=config.encoded_dim,
-        freeze_decoder=config.freeze_decoder
-    )
-    
-    if accelerator.is_main_process:
-        logger.info("Model initialized successfully")
-        logger.info(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
-        logger.info(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
-    
-    # Train model
-    if accelerator.is_main_process:
-        logger.info("\n" + "=" * 50)
-        logger.info("Starting Training")
-        logger.info("=" * 50)
-    
-    trained_model = train_model(
-        model,
-        train_dataloader,
-        val_dataloader,
-        tokenizer,
-        config,
-        accelerator,
-        log_file
-    )
-    
-    accelerator.wait_for_everyone()
-    
-    # Evaluate fine-tuned model on test set
-    if accelerator.is_main_process:
-        logger.info("\n" + "=" * 50)
-        logger.info("Training Complete - Evaluating on Test Set")
-        logger.info("=" * 50)
-    
-    evaluate_finetuned(config, accelerator, log_file)
-    
-    if accelerator.is_main_process:
-        logger.info("\n" + "=" * 50)
-        logger.info("All Done!")
-        logger.info("=" * 50)
+    train(model, train_dl, val_dl, tokenizer, config, accelerator)
+    eval_only(config, accelerator)
 
 
 if __name__ == "__main__":
