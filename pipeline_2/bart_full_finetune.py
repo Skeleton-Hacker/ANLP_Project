@@ -46,14 +46,14 @@ class Config:
     
     # Training
     batch_size: int = 16
-    epochs: int = 20
+    epochs: int = 1000
     lr: float = 5e-4
     weight_decay: float = 1e-5
     warmup_steps: int = 500
     grad_accum_steps: int = 2
     max_grad_norm: float = 1.0
     patience: int = 5
-    eval_every_n_steps: int = 500
+    eval_every_n_epochs: int = 1  # Evaluate every epoch
     
     # Generation
     max_chunks: int = 800
@@ -193,9 +193,16 @@ def compute_metrics(preds: List[str], refs: List[str]) -> Dict:
 def evaluate(model, dataloader, tokenizer, config, accelerator, desc="Eval"):
     model.eval()
     preds, refs = [], []
+    losses = []
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process):
+            # Calculate loss
+            outputs = model(batch['embeddings'], batch['chunk_mask'], 
+                          batch['target_ids'], batch['target_mask'])
+            losses.append(outputs.loss.item())
+            
+            # Generate predictions
             gen_ids = model.generate(
                 batch['embeddings'], batch['chunk_mask'],
                 max_len=config.max_target_len,
@@ -205,7 +212,50 @@ def evaluate(model, dataloader, tokenizer, config, accelerator, desc="Eval"):
             preds.extend(tokenizer.batch_decode(gen_ids, skip_special_tokens=True))
             refs.extend(batch['target_texts'])
     
-    return compute_metrics(preds, refs), preds, refs
+    metrics = compute_metrics(preds, refs)
+    metrics['loss'] = np.mean(losses)
+    
+    return metrics, preds, refs
+
+
+def setup_logging(output_dir: str):
+    """Setup logging to file and console"""
+    log_dir = Path(output_dir) / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # File handler
+    log_file = log_dir / f"training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    
+    # Formatter
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # Add handlers to root logger
+    logging.getLogger().addHandler(file_handler)
+    logging.getLogger().addHandler(console_handler)
+    
+    return log_file
+
+
+def print_sample_outputs(preds: List[str], refs: List[str], doc_texts: List[str], epoch: int, num_samples: int = 5):
+    """Print sample model outputs for monitoring progress"""
+    logger.info(f"\n{'='*80}")
+    logger.info(f"EPOCH {epoch} - SAMPLE OUTPUTS")
+    logger.info(f"{'='*80}")
+    
+    for i in range(min(num_samples, len(preds))):
+        logger.info(f"\nSample {i+1}:")
+        logger.info(f"Document: {doc_texts[i][:200]}...")
+        logger.info(f"Reference: {refs[i]}")
+        logger.info(f"Generated: {preds[i]}")
+        logger.info("-" * 80)
 
 
 def train(model, train_dl, val_dl, tokenizer, config, accelerator):
@@ -219,9 +269,19 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
         model, optimizer, train_dl, val_dl, scheduler
     )
     
-    best_rouge = 0
+    best_val_loss = float('inf')
     patience = 0
     global_step = 0
+    
+    # Training history
+    history = {
+        'train_loss': [],
+        'val_loss': [],
+        'val_rouge1': [],
+        'val_rouge2': [],
+        'val_rougeL': [],
+        'val_bert_f1': []
+    }
     
     for epoch in range(config.epochs):
         model.train()
@@ -243,30 +303,64 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
             
             epoch_loss += loss.item() * config.grad_accum_steps
             pbar.set_postfix({'loss': f"{loss.item() * config.grad_accum_steps:.4f}"})
-            
-            if global_step > 0 and global_step % config.eval_every_n_steps == 0:
-                metrics, _, _ = evaluate(accelerator.unwrap_model(model), val_dl, tokenizer, 
-                                        config, accelerator, "Val")
-                if accelerator.is_main_process:
-                    logger.info(f"Step {global_step}: {metrics}")
-                
-                avg_rouge = np.mean([metrics['rouge1'], metrics['rouge2'], metrics['rougeL']])
-                if avg_rouge > best_rouge:
-                    best_rouge = avg_rouge
-                    patience = 0
-                    model_path = Path(config.output_dir) / "best_model.pt"
-                    torch.save(accelerator.unwrap_model(model).state_dict(), model_path)
-                else:
-                    patience += 1
-                    if patience >= config.patience:
-                        if accelerator.is_main_process:
-                            logger.info(f"Early stopping at step {global_step}")
-                        return
-                
-                model.train()
         
-        if accelerator.is_main_process:
-            logger.info(f"Epoch {epoch+1} avg loss: {epoch_loss/len(train_dl):.4f}")
+        # Calculate average training loss for the epoch
+        avg_train_loss = epoch_loss / len(train_dl)
+        history['train_loss'].append(avg_train_loss)
+        
+        # Evaluate every epoch
+        if (epoch + 1) % config.eval_every_n_epochs == 0:
+            val_metrics, val_preds, val_refs = evaluate(
+                accelerator.unwrap_model(model), val_dl, tokenizer, 
+                config, accelerator, "Validation"
+            )
+            
+            history['val_loss'].append(val_metrics['loss'])
+            history['val_rouge1'].append(val_metrics['rouge1'])
+            history['val_rouge2'].append(val_metrics['rouge2'])
+            history['val_rougeL'].append(val_metrics['rougeL'])
+            history['val_bert_f1'].append(val_metrics['bert_f1'])
+            
+            if accelerator.is_main_process:
+                # Log metrics
+                logger.info(f"\nEpoch {epoch+1} Results:")
+                logger.info(f"  Train Loss: {avg_train_loss:.4f}")
+                logger.info(f"  Val Loss: {val_metrics['loss']:.4f}")
+                logger.info(f"  Val ROUGE-1: {val_metrics['rouge1']:.4f}")
+                logger.info(f"  Val ROUGE-2: {val_metrics['rouge2']:.4f}")
+                logger.info(f"  Val ROUGE-L: {val_metrics['rougeL']:.4f}")
+                logger.info(f"  Val BERT-F1: {val_metrics['bert_f1']:.4f}")
+                
+                # Print sample outputs
+                val_ds = val_dl.dataset if hasattr(val_dl, 'dataset') else None
+                if val_ds is not None:
+                    sample_doc_texts = [val_ds[i]['doc_text'] for i in range(min(5, len(val_ds)))]
+                    print_sample_outputs(val_preds[:5], val_refs[:5], sample_doc_texts[:5], epoch + 1)
+                
+                # Save metrics to file
+                metrics_file = Path(config.output_dir) / "training_metrics.json"
+                with open(metrics_file, 'w') as f:
+                    json.dump(history, f, indent=2)
+            
+            # Early stopping based on validation loss
+            if val_metrics['loss'] < best_val_loss:
+                best_val_loss = val_metrics['loss']
+                patience = 0
+                model_path = Path(config.output_dir) / "best_model.pt"
+                torch.save(accelerator.unwrap_model(model).state_dict(), model_path)
+                if accelerator.is_main_process:
+                    logger.info(f"  New best model saved! Val Loss: {best_val_loss:.4f}")
+            else:
+                patience += 1
+                if accelerator.is_main_process:
+                    logger.info(f"  Early stopping patience: {patience}/{config.patience}")
+                
+                if patience >= config.patience:
+                    if accelerator.is_main_process:
+                        logger.info(f"Early stopping at epoch {epoch+1}")
+                    break
+        
+        accelerator.wait_for_everyone()
 
 
 def eval_only(config, accelerator):
@@ -296,6 +390,9 @@ def eval_only(config, accelerator):
         logger.info("Test Results:")
         for k, v in metrics.items():
             logger.info(f"  {k}: {v:.4f}")
+        
+        # Print sample outputs
+        print_sample_outputs(preds[:5], refs[:5], [test_ds[i]['doc_text'] for i in range(5)], "final")
         
         Path("evaluations").mkdir(exist_ok=True)
         with open("evaluations/results.json", 'w') as f:
@@ -351,14 +448,23 @@ def compare_base(config, accelerator):
             improvement = ((ft_val - base_val) / base_val * 100) if base_val else 0
             logger.info(f"{metric:<15} {ft_val:>12.4f} {base_val:>12.4f} {improvement:>11.1f}%")
         
+        # Print sample outputs comparison
+        logger.info(f"\n{'='*80}")
+        logger.info("SAMPLE OUTPUTS COMPARISON")
+        logger.info(f"{'='*80}")
+        for i in range(min(3, len(ft_preds))):
+            logger.info(f"\nSample {i+1}:")
+            logger.info(f"Reference: {ft_refs[i]}")
+            logger.info(f"Finetuned: {ft_preds[i]}")
+            logger.info(f"Base:      {base_preds[i]}")
+            logger.info("-" * 80)
+        
         Path("evaluations").mkdir(exist_ok=True)
         with open("evaluations/comparison.json", 'w') as f:
             json.dump({'finetuned': ft_metrics, 'base': base_metrics}, f, indent=2)
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
     parser = argparse.ArgumentParser()
     parser.add_argument('--eval-only', action='store_true')
     parser.add_argument('--compare-base', action='store_true')
@@ -380,8 +486,11 @@ def main():
     )
     
     if accelerator.is_main_process:
+        # Setup logging
+        log_file = setup_logging(config.output_dir)
         logger.info("=" * 60)
         logger.info("BART Finetuning with BGE-M3 Embeddings")
+        logger.info(f"Log file: {log_file}")
         logger.info("=" * 60)
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
     
@@ -418,6 +527,10 @@ def main():
         logger.info("Starting training...")
     
     train(model, train_dl, val_dl, tokenizer, config, accelerator)
+    
+    # Final evaluation
+    if accelerator.is_main_process:
+        logger.info("Training completed. Running final evaluation...")
     eval_only(config, accelerator)
 
 
