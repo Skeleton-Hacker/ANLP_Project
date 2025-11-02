@@ -43,16 +43,17 @@ class Config:
     # Model
     bart_model: str = "facebook/bart-base"
     embedding_dim: int = 1024  # BGE-M3 embedding dimension
+    freeze_decoder: bool = False  # Whether to freeze the BART decoder parameters
     
     # Training
     batch_size: int = 16
     epochs: int = 1000
     lr: float = 5e-4
-    weight_decay: float = 1e-5
+    weight_decay: float = 1e-3
     warmup_steps: int = 500
     grad_accum_steps: int = 2
     max_grad_norm: float = 1.0
-    patience: int = 5
+    patience: int = 1000
     eval_every_n_epochs: int = 1  # Evaluate every epoch
     
     # Generation
@@ -133,13 +134,22 @@ def collate_fn(batch):
 
 
 class BartChunkModel(nn.Module):
-    def __init__(self, bart_model: str, embed_dim: int):
+    def __init__(self, bart_model: str, embed_dim: int, freeze_decoder: bool = True):
         super().__init__()
         self.bart = BartForConditionalGeneration.from_pretrained(bart_model, use_safetensors=True)
         self.projection = nn.Linear(embed_dim, self.bart.config.d_model)
         
-        logger.info(f"Total params: {sum(p.numel() for p in self.parameters()):,}")
-        logger.info(f"Trainable params: {sum(p.numel() for p in self.parameters() if p.requires_grad):,}")
+        if freeze_decoder:
+            logger.info("Freezing BART decoder parameters...")
+            for param in self.bart.model.decoder.parameters():
+                param.requires_grad = False
+        
+        # Log parameter counts
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        logger.info(f"Total params: {total_params:,}")
+        logger.info(f"Trainable params: {trainable_params:,}")
+        logger.info(f"Frozen params: {total_params - trainable_params:,}")
     
     def forward(self, embeddings, chunk_mask, target_ids, target_mask):
         encoder_hidden = self.projection(embeddings)
@@ -578,10 +588,15 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=config.batch_size, shuffle=True, collate_fn=collate_fn)
     val_dl = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
     
-    model = BartChunkModel(config.bart_model, config.embedding_dim)
+    model = BartChunkModel(
+        bart_model=config.bart_model,
+        embed_dim=config.embedding_dim,
+        freeze_decoder=config.freeze_decoder
+    )
     
     if accelerator.is_main_process:
         logger.info(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+        logger.info(f"Decoder freezing: {'enabled' if config.freeze_decoder else 'disabled'}")
         logger.info("Starting training...")
     
     train(model, train_dl, val_dl, tokenizer, config, accelerator)
