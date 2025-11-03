@@ -30,12 +30,12 @@ class EmbeddingConfig:
     chunked_data_dir: str = "chunked_data"
     output_dir: str = "chunked_data"
     # splits: List[str] = field(default_factory=lambda: ["train", "validation", "test"])
-    splits: List[str] = field(default_factory=lambda: ["test"])
+    splits: List[str] = field(default_factory=lambda: ["train"])
 
     embedding_model_name: str = "BAAI/bge-large-en-v1.5"
     embedding_dim: int = 1024
 
-    batch_size: int = 256
+    batch_size: int = 128
     seed: int = 42
 
 

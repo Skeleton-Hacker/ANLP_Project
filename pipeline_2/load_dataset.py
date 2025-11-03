@@ -11,13 +11,10 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-
 def clean_text(s: str) -> str:
     """Clean text by removing BOMs, normalizing whitespace, and handling special characters.
-    
     Args:
         s: Input string to clean
-        
     Returns:
         Cleaned string with normalized whitespace
     """
@@ -27,6 +24,34 @@ def clean_text(s: str) -> str:
     # Remove Unicode BOM and common mis-decoded BOM sequences
     s = s.replace('\ufeff', '')
     s = s.replace('ï»¿', '')
+    
+    # Remove everything before "START OF" markers
+    s = re.sub(r'^.*?START OF (THIS |THE )?PROJECT GUTENBERG.*?$', '', s, flags=re.DOTALL | re.IGNORECASE | re.MULTILINE)
+    
+    # Remove everything after "END OF" markers
+    s = re.sub(r'(\*{3} )?END OF (THIS |THE )?PROJECT GUTENBERG.*$', '', s, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Remove license sections - look for common license keywords
+    s = re.sub(r'FULL LICENSE.*?(?=^[A-Z][a-z]|\Z)', '', s, flags=re.DOTALL | re.IGNORECASE | re.MULTILINE)
+    s = re.sub(r'START:? FULL LICENSE.*', '', s, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Remove any paragraph mentioning "Project Gutenberg" and legal/license terms
+    s = re.sub(r'[^\n\.]*(?:Project Gutenberg|PGLAF|Literary Archive Foundation)[^\n\.]*(?:license|copyright|trademark|permission|redistribute|derivative works)[^\n\.]*[\.\n]', '', s, flags=re.IGNORECASE)
+    
+    # Remove donation/foundation information sections
+    s = re.sub(r'[^\n\.]*(?:donat(?:e|ions)|tax exempt|non-?profit|501\(c\)|contributions|EIN)[^\n\.]*[\.\n]', '', s, flags=re.IGNORECASE)
+    
+    # Remove warranty/liability disclaimers
+    s = re.sub(r'[^\n\.]*(?:warranty|disclaimer|liability|damages|indemnity|AS-IS)[^\n\.]*[\.\n]', '', s, flags=re.IGNORECASE)
+    
+    # Remove metadata lines (Produced by, Release Date, Language, etc.)
+    s = re.sub(r'^(Produced by|Release Date|Language|Title|Author|Transcriber):.*?$', '', s, flags=re.MULTILINE | re.IGNORECASE)
+    
+    # Remove transcriber's notes
+    s = re.sub(r'\[Transcriber\'?s Note:.*?\]', '', s, flags=re.DOTALL | re.IGNORECASE)
+    
+    # Remove HTML tags
+    s = re.sub(r'<[^>]+>', '', s)
     
     # Normalize line breaks to spaces and remove carriage returns
     s = s.replace('\r\n', ' ').replace('\r', ' ').replace('\n', ' ')
@@ -38,7 +63,6 @@ def clean_text(s: str) -> str:
     s = re.sub(r"\s+", ' ', s).strip()
     
     return s
-
 
 def _load(
     dataset_name: str,
