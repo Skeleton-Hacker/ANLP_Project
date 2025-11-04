@@ -22,6 +22,7 @@ import numpy as np
 from transformers import (
     T5ForConditionalGeneration,
     T5Tokenizer,
+    T5Config,
     get_linear_schedule_with_warmup
 )
 from transformers.modeling_outputs import BaseModelOutput
@@ -46,7 +47,7 @@ class Config:
     freeze_decoder: bool = False
 
     # Training
-    batch_size: int = 2
+    batch_size: int = 1
     epochs: int = 1000
     lr: float = 3e-4  # Slightly lower learning rate
     weight_decay: float = 1e-3
@@ -191,7 +192,13 @@ def collate_fn(batch):
 class T5ChunkModel(nn.Module):
     def __init__(self, t5_model: str, embed_dim: int, freeze_decoder: bool = False, config: Config = None):
         super().__init__()
-        self.t5 = T5ForConditionalGeneration.from_pretrained(t5_model)
+        
+        # Load only the config, not the pretrained weights
+        t5_config = T5Config.from_pretrained(t5_model)
+        
+        # Initialize T5 model with random weights (no pretrained weights)
+        self.t5 = T5ForConditionalGeneration(t5_config)
+        
         self.projection = nn.Linear(embed_dim, self.t5.config.d_model)
 
         self.layernorm = nn.LayerNorm(self.t5.config.d_model)

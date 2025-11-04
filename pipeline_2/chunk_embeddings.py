@@ -30,12 +30,12 @@ class EmbeddingConfig:
     chunked_data_dir: str = "chunked_data"
     output_dir: str = "chunked_data"
     # splits: List[str] = field(default_factory=lambda: ["train", "validation", "test"])
-    splits: List[str] = field(default_factory=lambda: ["train"])
+    splits: List[str] = field(default_factory=lambda: ["test"])
 
     embedding_model_name: str = "BAAI/bge-large-en-v1.5"
     embedding_dim: int = 1024
 
-    batch_size: int = 128
+    batch_size: int = 256
     seed: int = 42
 
 
@@ -50,8 +50,8 @@ def generate_chunk_embeddings_accelerated(
     model_name: str,
     accelerator: Accelerator,
     batch_size: int = 2048,
-) -> torch.Tensor:
-    """Generate embeddings for chunks using accelerate. Returns tensor on GPU."""
+) -> tuple:
+    """Generate embeddings for chunks using accelerate. Returns (embeddings, chunk_indices, local_rank)."""
     local_rank = accelerator.process_index
     device = accelerator.device
 
@@ -66,6 +66,7 @@ def generate_chunk_embeddings_accelerated(
     start = local_rank * chunks_per_proc
     end = min(start + chunks_per_proc, num_chunks)
     local_chunks = chunks[start:end]
+    chunk_indices = list(range(start, end))
 
     if accelerator.is_local_main_process:
         logger.info(f"Total chunks: {num_chunks} | Each process handles: {len(local_chunks)}")
@@ -83,35 +84,19 @@ def generate_chunk_embeddings_accelerated(
     if accelerator.is_local_main_process:
         logger.info(f"Local embeddings shape: {local_embeddings.shape}, device: {local_embeddings.device}")
 
-    # Pad embeddings to ensure all processes have the same size
-    # This is crucial for gather to work properly
-    max_size = chunks_per_proc
-    current_size = local_embeddings.shape[0]
-    
-    if current_size < max_size:
-        # Pad with zeros
-        padding = torch.zeros(
-            (max_size - current_size, local_embeddings.shape[1]),
-            dtype=local_embeddings.dtype,
-            device=device
-        )
-        local_embeddings = torch.cat([local_embeddings, padding], dim=0)
+    # Convert to CPU to free GPU memory immediately
+    local_embeddings = local_embeddings.cpu()
     
     if accelerator.is_local_main_process:
-        logger.info(f"After padding - shape: {local_embeddings.shape}")
+        logger.info(f"Moved embeddings to CPU - shape: {local_embeddings.shape}")
 
-    # Gather embeddings from all processes - stays on GPU
-    accelerator.wait_for_everyone()
-    all_embeddings = accelerator.gather(local_embeddings)
-    
-    if accelerator.is_local_main_process:
-        logger.info(f"Gathered embeddings shape: {all_embeddings.shape}, device: {all_embeddings.device}")
-        # Trim to original size (remove padding)
-        all_embeddings = all_embeddings[:num_chunks]
-        logger.info(f"After trimming - shape: {all_embeddings.shape}")
-        return all_embeddings  # Keep on GPU
-    else:
-        return torch.empty(0, device=device)  # Return empty tensor instead of None
+    # Clean up model and intermediate tensors
+    del model
+    del local_chunks
+    torch.cuda.empty_cache()
+
+    # Return embeddings with chunk indices and rank for later reconstruction
+    return local_embeddings, chunk_indices, local_rank
 
 
 def process_and_save_split(split_name: str, config: EmbeddingConfig, accelerator: Accelerator):
@@ -141,20 +126,54 @@ def process_and_save_split(split_name: str, config: EmbeddingConfig, accelerator
     if accelerator.is_local_main_process:
         logger.info(f"Loaded {len(chunks)} chunks from {len(stories)} stories")
     
-    # Generate embeddings - stays on GPU
-    embeddings = generate_chunk_embeddings_accelerated(
+    # Generate embeddings - each process handles its own
+    embeddings, chunk_indices, local_rank = generate_chunk_embeddings_accelerated(
         chunks,
         config.embedding_model_name,
         accelerator,
         config.batch_size,
     )
 
-    # Only main process saves results
+    # Save per-process embeddings with indices
+    accelerator.wait_for_everyone()
+    output_path = Path(config.output_dir) / f"{split_name}_chunks_encoded_rank{local_rank}.pkl"
+    
+    logger.info(f"[Rank {local_rank}] Saving {len(chunk_indices)} embeddings to {output_path}...")
+    embeddings_np = embeddings.numpy() if hasattr(embeddings, 'numpy') else embeddings
+    
+    rank_data = {
+        "chunk_indices": chunk_indices,
+        "embeddings": embeddings_np,
+        "metadata": {
+            "rank": local_rank,
+            "num_embeddings": len(chunk_indices),
+            "embedding_dim": embeddings_np.shape[1],
+        }
+    }
+    
+    with open(output_path, "wb") as f:
+        pickle.dump(rank_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+    logger.info(f"✓ [Rank {local_rank}] Saved embeddings - File size: {output_path.stat().st_size / (1024 * 1024):.2f} MB")
+
+    # Only main process merges and reconstructs
+    accelerator.wait_for_everyone()
     if accelerator.is_local_main_process:
-        logger.info("Converting embeddings to numpy on CPU...")
-        # Move to CPU and convert to numpy only at the very end
-        embeddings_np = embeddings.cpu().numpy()
-        logger.info(f"Embeddings converted - shape: {embeddings_np.shape}")
+        logger.info("Main process: Merging embeddings from all ranks...")
+        
+        # Load embeddings from all ranks
+        all_embeddings_dict = {}
+        for rank in range(accelerator.num_processes):
+            rank_path = Path(config.output_dir) / f"{split_name}_chunks_encoded_rank{rank}.pkl"
+            if rank_path.exists():
+                with open(rank_path, "rb") as f:
+                    rank_data = pickle.load(f)
+                    for idx, chunk_idx in enumerate(rank_data["chunk_indices"]):
+                        all_embeddings_dict[chunk_idx] = rank_data["embeddings"][idx]
+        
+        # Reconstruct in order
+        embeddings_list = [all_embeddings_dict[i] for i in range(len(chunks))]
+        embeddings_np = np.array(embeddings_list)
+        logger.info(f"Merged embeddings shape: {embeddings_np.shape}")
         
         embedded_data = {
             "stories": {},
@@ -187,12 +206,20 @@ def process_and_save_split(split_name: str, config: EmbeddingConfig, accelerator
             )
 
         output_path = Path(config.output_dir) / f"{split_name}_chunks_encoded.pkl"
-        logger.info(f"Saving to {output_path}...")
+        logger.info(f"Saving merged data to {output_path}...")
         with open(output_path, "wb") as f:
             pickle.dump(embedded_data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         logger.info(f"✓ Saved embedded data to {output_path}")
         logger.info(f"✓ File size: {output_path.stat().st_size / (1024 * 1024):.2f} MB")
+        
+        # Clean up rank files
+        logger.info("Cleaning up per-rank files...")
+        for rank in range(accelerator.num_processes):
+            rank_path = Path(config.output_dir) / f"{split_name}_chunks_encoded_rank{rank}.pkl"
+            if rank_path.exists():
+                rank_path.unlink()
+                logger.info(f"Deleted {rank_path.name}")
 
 
 def main():
@@ -218,6 +245,12 @@ def main():
     for split in config.splits:
         process_and_save_split(split, config, accelerator)
         accelerator.wait_for_everyone()
+        
+        # Clear GPU cache after each split
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if accelerator.is_local_main_process:
+            logger.info(f"GPU cache cleared after processing {split} split")
 
     if accelerator.is_local_main_process:
         logger.info("\n" + "=" * 80)

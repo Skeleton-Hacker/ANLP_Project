@@ -21,6 +21,7 @@ import numpy as np
 from transformers import (
     BartForConditionalGeneration,
     BartTokenizer,
+    BartConfig,
     get_linear_schedule_with_warmup
 )
 from transformers.modeling_outputs import BaseModelOutput
@@ -148,7 +149,13 @@ def collate_fn(batch):
 class BartChunkModel(nn.Module):
     def __init__(self, bart_model: str, embed_dim: int, freeze_decoder: bool = True, config: Config = None):
         super().__init__()
-        self.bart = BartForConditionalGeneration.from_pretrained(bart_model, use_safetensors=True)
+        
+        # Load only the config, not the pretrained weights
+        bart_config = BartConfig.from_pretrained(bart_model)
+        
+        # Initialize BART model with random weights (no pretrained weights)
+        self.bart = BartForConditionalGeneration(bart_config)
+        
         self.projection = nn.Linear(embed_dim, self.bart.config.d_model)
 
         # Optional small LayerNorm and dropout to stabilize projection
