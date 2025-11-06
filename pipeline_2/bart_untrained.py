@@ -681,12 +681,12 @@ def compare_base(config, accelerator):
 
     if accelerator.is_main_process:
         # Save comparison results to text file
-        comparison_file = Path("evaluations") / "comparison_results_untrained.txt"
+        comparison_file = Path("evaluations") / "comparison_results_bart_untrained.txt"
         comparison_file.parent.mkdir(exist_ok=True)
         
         with open(comparison_file, 'w') as f:
             f.write("="*80 + "\n")
-            f.write("MODEL COMPARISON: BART Untrained vs Base Pretrained\n")
+            f.write("MODEL COMPARISON: BART (Untrained on Chunks) vs BART Base Pretrained\n")
             f.write("="*80 + "\n\n")
             
             f.write(f"{'Metric':<20} {'Untrained':>15} {'Base':>15} {'Difference':>15}\n")
