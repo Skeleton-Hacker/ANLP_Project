@@ -363,24 +363,43 @@ def setup_logging(output_dir: str):
 
 
 def print_sample_outputs(preds: List[str], refs: List[str], doc_texts: List[str], epoch: int, num_samples: int = 5):
-    """Print sample model outputs for monitoring progress"""
+    """Print sample model outputs for monitoring progress and save to txt file"""
     logger.info(f"\n{'='*80}")
     logger.info(f"EPOCH {epoch} - SAMPLE OUTPUTS")
     logger.info(f"{'='*80}")
 
-    for i in range(min(num_samples, len(preds))):
-        logger.info(f"\nSample {i+1}:")
-        logger.info(f"Reference: {refs[i]}")
-        logger.info(f"Generated: {preds[i]}")
+    # Also save to text file
+    output_file = Path("evaluations") / f"sample_outputs_{epoch}.txt"
+    output_file.parent.mkdir(exist_ok=True)
+    
+    with open(output_file, 'w') as f:
+        f.write("="*80 + "\n")
+        f.write(f"EPOCH {epoch} - SAMPLE OUTPUTS\n")
+        f.write("="*80 + "\n\n")
+        
+        for i in range(min(num_samples, len(preds))):
+            f.write(f"Sample {i+1}:\n")
+            f.write(f"Reference: {refs[i]}\n")
+            f.write(f"Generated: {preds[i]}\n")
 
-        scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
-        scores = scorer.score(refs[i], preds[i])
-        P, R, F1 = bert_score([preds[i]], [refs[i]], lang='en', verbose=False)
+            scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+            scores = scorer.score(refs[i], preds[i])
+            P, R, F1 = bert_score([preds[i]], [refs[i]], lang='en', verbose=False)
 
-        logger.info(f"ROUGE-1: {scores['rouge1'].fmeasure:.4f} | " +
-                   f"ROUGE-2: {scores['rouge2'].fmeasure:.4f} | " +
-                   f"BERT-F1: {F1.mean().item():.4f}")
-        logger.info("=" * 80)
+            rouge1 = scores['rouge1'].fmeasure
+            rouge2 = scores['rouge2'].fmeasure
+            rougeL = scores['rougeL'].fmeasure
+            bert_f1 = F1.mean().item()
+
+            f.write(f"ROUGE-1: {rouge1:.4f} | ROUGE-2: {rouge2:.4f} | ROUGE-L: {rougeL:.4f} | BERT-F1: {bert_f1:.4f}\n")
+            f.write("-" * 80 + "\n\n")
+
+            # Also log to console
+            logger.info(f"\nSample {i+1}:")
+            logger.info(f"Reference: {refs[i]}")
+            logger.info(f"Generated: {preds[i]}")
+            logger.info(f"ROUGE-1: {rouge1:.4f} | ROUGE-2: {rouge2:.4f} | ROUGE-L: {rougeL:.4f} | BERT-F1: {bert_f1:.4f}")
+            logger.info("=" * 80)
 
 
 def train(model, train_dl, val_dl, tokenizer, config, accelerator):
@@ -493,9 +512,91 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
         accelerator.wait_for_everyone()
 
 
+def compare_base(config, accelerator):
+    """Compare finetuned T5 model with base pretrained model"""
+    if accelerator.is_main_process:
+        logger.info("Comparing finetuned vs base T5 model")
+
+    test_path = Path(config.encoded_data_dir) / "test_chunks_encoded.pkl"
+    model_path = Path(config.output_dir) / "best_model.pt"
+
+    if not test_path.exists() or not model_path.exists():
+        logger.error("Test data or model not found")
+        return
+
+    tokenizer = T5Tokenizer.from_pretrained(config.t5_model)
+    test_ds = ChunkDataset(test_path, tokenizer, config.max_chunks, config.max_target_len, validate=False)
+    test_dl = DataLoader(test_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
+
+    # Finetuned model
+    model = T5ChunkModel(config.t5_model, config.embedding_dim, freeze_decoder=config.freeze_decoder, config=config)
+    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+    model, test_dl = accelerator.prepare(model, test_dl)
+    ft_metrics, ft_preds, ft_refs = evaluate(accelerator.unwrap_model(model), test_dl,
+                                             tokenizer, config, accelerator, "Finetuned")
+
+    # Base model
+    base_model = T5ForConditionalGeneration.from_pretrained(config.t5_model)
+    base_model = base_model.to(accelerator.device)
+    base_model.eval()
+
+    base_preds, base_refs = [], []
+    with torch.no_grad():
+        for batch in tqdm(test_dl, desc="Base", disable=not accelerator.is_main_process):
+            # Tokenize doc_texts directly for baseline
+            input_enc = tokenizer(batch['doc_texts'], max_length=512, padding='max_length',
+                                 truncation=True, return_tensors='pt').to(accelerator.device)
+            gen_ids = base_model.generate(input_enc['input_ids'], attention_mask=input_enc['attention_mask'],
+                                         max_length=config.max_target_len)
+            base_preds.extend(tokenizer.batch_decode(gen_ids, skip_special_tokens=True))
+            base_refs.extend(batch['target_texts'])
+
+    base_metrics = compute_metrics(base_preds, base_refs)
+
+    if accelerator.is_main_process:
+        # Save comparison results to text file
+        comparison_file = Path("evaluations") / "comparison_results.txt"
+        comparison_file.parent.mkdir(exist_ok=True)
+        
+        with open(comparison_file, 'w') as f:
+            f.write("="*80 + "\n")
+            f.write("MODEL COMPARISON: T5 Finetuned vs Base Pretrained\n")
+            f.write("="*80 + "\n\n")
+            
+            f.write(f"{'Metric':<20} {'Finetuned':>15} {'Base':>15} {'Improvement':>15}\n")
+            f.write("-" * 70 + "\n")
+            for metric in ['rouge1', 'rouge2', 'rougeL', 'bert_f1']:
+                ft_val = ft_metrics[metric]
+                base_val = base_metrics[metric]
+                improvement = ((ft_val - base_val) / base_val * 100) if base_val else 0
+                f.write(f"{metric:<20} {ft_val:>15.4f} {base_val:>15.4f} {improvement:>14.1f}%\n")
+            
+            f.write("\n" + "="*80 + "\n")
+            f.write("SAMPLE OUTPUTS COMPARISON\n")
+            f.write("="*80 + "\n\n")
+            
+            for i in range(min(5, len(ft_preds))):
+                f.write(f"Sample {i+1}:\n")
+                f.write(f"{'Reference':<12}: {ft_refs[i]}\n")
+                f.write(f"{'Finetuned':<12}: {ft_preds[i]}\n")
+                f.write(f"{'Base':<12}: {base_preds[i]}\n")
+                f.write("-" * 80 + "\n\n")
+        
+        logger.info(f"Comparison results saved to {comparison_file}")
+        logger.info("Comparison Results:")
+        logger.info(f"{'Metric':<15} {'Finetuned':>12} {'Base':>12} {'Improvement':>12}")
+        logger.info("-" * 55)
+        for metric in ['rouge1', 'rouge2', 'rougeL', 'bert_f1']:
+            ft_val = ft_metrics[metric]
+            base_val = base_metrics[metric]
+            improvement = ((ft_val - base_val) / base_val * 100) if base_val else 0
+            logger.info(f"{metric:<15} {ft_val:>12.4f} {base_val:>12.4f} {improvement:>11.1f}%")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--eval-only', action='store_true')
+    parser.add_argument('--compare-base', action='store_true')
     args = parser.parse_args()
 
     config = Config()
@@ -518,6 +619,10 @@ def main():
         Path(config.output_dir).mkdir(parents=True, exist_ok=True)
 
     accelerator.wait_for_everyone()
+
+    if args.compare_base:
+        compare_base(config, accelerator)
+        return
 
     tokenizer = T5Tokenizer.from_pretrained(config.t5_model)
 

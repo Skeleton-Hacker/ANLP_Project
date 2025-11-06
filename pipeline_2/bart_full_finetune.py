@@ -346,35 +346,43 @@ def setup_logging(output_dir: str):
 
 
 def print_sample_outputs(preds: List[str], refs: List[str], doc_texts: List[str], epoch: int, num_samples: int = 5):
-    """Print sample model outputs for monitoring progress"""
+    """Print sample model outputs for monitoring progress and save to txt file"""
     logger.info(f"\n{'='*80}")
     logger.info(f"EPOCH {epoch} - DETAILED SAMPLE OUTPUTS")
     logger.info(f"{'='*80}")
 
-    for i in range(min(num_samples, len(preds))):
-        logger.info(f"\nSample {i+1}:")
-        logger.info(f"Input Document (truncated):")
-        logger.info("-" * 40)
-        logger.info(f"{doc_texts[i][:300]}...")
-        logger.info("-" * 40)
-        logger.info(f"Reference Summary:")
-        logger.info(f"{refs[i]}")
-        logger.info("-" * 40)
-        logger.info(f"Generated Summary:")
-        logger.info(f"{preds[i]}")
+    # Also save to text file
+    output_file = Path("evaluations") / f"sample_outputs_{epoch}.txt"
+    output_file.parent.mkdir(exist_ok=True)
+    
+    with open(output_file, 'w') as f:
+        f.write("="*80 + "\n")
+        f.write(f"EPOCH {epoch} - SAMPLE OUTPUTS\n")
+        f.write("="*80 + "\n\n")
+        
+        for i in range(min(num_samples, len(preds))):
+            f.write(f"Sample {i+1}:\n")
+            f.write(f"Reference: {refs[i]}\n")
+            f.write(f"Generated: {preds[i]}\n")
 
-        # Calculate individual metrics for this sample
-        scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
-        scores = scorer.score(refs[i], preds[i])
-        P, R, F1 = bert_score([preds[i]], [refs[i]], lang='en', verbose=False)
+            scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+            scores = scorer.score(refs[i], preds[i])
+            P, R, F1 = bert_score([preds[i]], [refs[i]], lang='en', verbose=False)
 
-        logger.info("-" * 40)
-        logger.info(f"Sample Metrics:")
-        logger.info(f"ROUGE-1: {scores['rouge1'].fmeasure:.4f}")
-        logger.info(f"ROUGE-2: {scores['rouge2'].fmeasure:.4f}")
-        logger.info(f"ROUGE-L: {scores['rougeL'].fmeasure:.4f}")
-        logger.info(f"BERT-F1: {F1.mean().item():.4f}")
-        logger.info("=" * 80)
+            rouge1 = scores['rouge1'].fmeasure
+            rouge2 = scores['rouge2'].fmeasure
+            rougeL = scores['rougeL'].fmeasure
+            bert_f1 = F1.mean().item()
+
+            f.write(f"ROUGE-1: {rouge1:.4f} | ROUGE-2: {rouge2:.4f} | ROUGE-L: {rougeL:.4f} | BERT-F1: {bert_f1:.4f}\n")
+            f.write("-" * 80 + "\n\n")
+
+            # Also log to console
+            logger.info(f"\nSample {i+1}:")
+            logger.info(f"Reference: {refs[i]}")
+            logger.info(f"Generated: {preds[i]}")
+            logger.info(f"ROUGE-1: {rouge1:.4f} | ROUGE-2: {rouge2:.4f} | ROUGE-L: {rougeL:.4f} | BERT-F1: {bert_f1:.4f}")
+            logger.info("=" * 80)
 
 
 def train(model, train_dl, val_dl, tokenizer, config, accelerator):
@@ -599,6 +607,36 @@ def compare_base(config, accelerator):
     base_metrics = compute_metrics(base_preds, base_refs)
 
     if accelerator.is_main_process:
+        # Save comparison results to text file
+        comparison_file = Path("evaluations") / "comparison_results.txt"
+        comparison_file.parent.mkdir(exist_ok=True)
+        
+        with open(comparison_file, 'w') as f:
+            f.write("="*80 + "\n")
+            f.write("MODEL COMPARISON: BART Finetuned vs Base Pretrained\n")
+            f.write("="*80 + "\n\n")
+            
+            f.write(f"{'Metric':<20} {'Finetuned':>15} {'Base':>15} {'Improvement':>15}\n")
+            f.write("-" * 70 + "\n")
+            for metric in ['rouge1', 'rouge2', 'rougeL', 'bert_f1']:
+                ft_val = ft_metrics[metric]
+                base_val = base_metrics[metric]
+                improvement = ((ft_val - base_val) / base_val * 100) if base_val else 0
+                f.write(f"{metric:<20} {ft_val:>15.4f} {base_val:>15.4f} {improvement:>14.1f}%\n")
+            
+            f.write("\n" + "="*80 + "\n")
+            f.write("SAMPLE OUTPUTS COMPARISON\n")
+            f.write("="*80 + "\n\n")
+            
+            for i in range(min(5, len(ft_preds))):
+                f.write(f"Sample {i+1}:\n")
+                f.write(f"{'Reference':<12}: {ft_refs[i]}\n")
+                f.write(f"{'Finetuned':<12}: {ft_preds[i]}\n")
+                f.write(f"{'Base':<12}: {base_preds[i]}\n")
+                f.write("-" * 80 + "\n\n")
+        
+        logger.info(f"Comparison results saved to {comparison_file}")
+        
         logger.info("Comparison Results:")
         logger.info(f"{'Metric':<15} {'Finetuned':>12} {'Base':>12} {'Improvement':>12}")
         logger.info("-" * 55)
@@ -607,21 +645,6 @@ def compare_base(config, accelerator):
             base_val = base_metrics[metric]
             improvement = ((ft_val - base_val) / base_val * 100) if base_val else 0
             logger.info(f"{metric:<15} {ft_val:>12.4f} {base_val:>12.4f} {improvement:>11.1f}%")
-
-        # Print sample outputs comparison
-        logger.info(f"\n{'='*80}")
-        logger.info("SAMPLE OUTPUTS COMPARISON")
-        logger.info(f"{'='*80}")
-        for i in range(min(3, len(ft_preds))):
-            logger.info(f"\nSample {i+1}:")
-            logger.info(f"Reference: {ft_refs[i]}")
-            logger.info(f"Finetuned: {ft_preds[i]}")
-            logger.info(f"Base:      {base_preds[i]}")
-            logger.info("-" * 80)
-
-        Path("evaluations").mkdir(exist_ok=True)
-        with open("evaluations/comparison.json", 'w') as f:
-            json.dump({'finetuned': ft_metrics, 'base': base_metrics}, f, indent=2)
 
 
 def main():
