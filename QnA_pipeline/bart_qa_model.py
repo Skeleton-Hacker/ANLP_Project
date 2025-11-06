@@ -31,25 +31,26 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 class Config:
     # Data
-    encoded_data_dir: str = "qa_chunked_data"
+    encoded_data_dir: str = "chunked_data"
     output_dir: str = "models/bart_qa"
     dataset_name: str = "deepmind/narrativeqa"
 
     # Model
     bart_model: str = "facebook/bart-base"
-    embedding_dim: int = 1024  # BGE-M3 embedding dimension
+    embedding_dim: int = 1024
     freeze_decoder: bool = False
 
     # Training
     batch_size: int = 8
-    epochs: int = 1000
-    lr: float = 5e-4
+    num_epochs: int = 75
+    learning_rate: float = 5e-4
     weight_decay: float = 1e-3
-    warmup_steps: int = 500
+    warmup_steps: int = 0
+    warmup_ratio: float = 0.0
     grad_accum_steps: int = 2
     max_grad_norm: float = 1.0
-    patience: int = 20
-    eval_every_n_epochs: int = 1
+    patience: int = 10
+    eval_every_n_epochs: int = 10
 
     # Generation
     max_chunks: int = 800
@@ -296,116 +297,260 @@ def compute_metrics(preds: List[str], refs: List[str]) -> Dict:
 
 
 def evaluate(model, dataloader, tokenizer, config, accelerator, desc="Eval"):
-    """Evaluate the model."""
+    """Evaluate model and compute metrics."""
     model.eval()
-    preds, refs = [], []
-    losses = []
+    all_preds = []
+    all_refs = []
+    total_loss = 0.0  # ✅ Track validation loss
+    num_batches = 0
+    
+    # Unwrap model for generation (needed for DDP/Accelerate)
+    unwrapped_model = accelerator.unwrap_model(model)
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc=desc, disable=not accelerator.is_main_process):
-            chunk_embeddings = batch['chunk_embeddings'].to(accelerator.device)
-            question_embedding = batch['question_embedding'].to(accelerator.device)
-            chunk_mask = batch['chunk_mask'].to(accelerator.device)
-            answer_ids = batch['answer_ids'].to(accelerator.device)
-            answer_mask = batch['answer_mask'].to(accelerator.device)
+            chunk_embeds = batch['chunk_embeddings']
+            chunk_mask = batch['chunk_mask']
+            question_embeds = batch['question_embedding']
+            answer_ids = batch['answer_ids']
+            answer_mask = batch['answer_mask']
+            answer_texts = batch['answer_texts']
             
-            # Loss
-            outputs = model(chunk_embeddings, question_embedding, chunk_mask, answer_ids, answer_mask)
-            losses.append(outputs.loss.item())
+            # Compute loss
+            outputs = model(
+                chunk_embeddings=chunk_embeds,
+                question_embedding=question_embeds,
+                chunk_mask=chunk_mask,
+                answer_ids=answer_ids,
+                answer_mask=answer_mask
+            )
+            total_loss += outputs.loss.item()
+            num_batches += 1
             
-            # Generate
-            gen_ids = model.generate(
-                chunk_embeddings, question_embedding, chunk_mask,
+            # Generate predictions (for metrics)
+            gen_ids = unwrapped_model.generate(
+                chunk_embeddings=chunk_embeds,
+                question_embedding=question_embeds,
+                chunk_mask=chunk_mask,
                 max_len=config.max_answer_len,
                 min_len=config.min_answer_len,
                 num_beams=config.num_beams
             )
             
-            gen_ids = accelerator.pad_across_processes(gen_ids, dim=1, pad_index=tokenizer.pad_token_id)
-            gen_ids = accelerator.gather_for_metrics(gen_ids)
+            # Decode predictions
+            preds = tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
             
-            if accelerator.is_main_process:
-                gen_texts = tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
-                preds.extend(gen_texts)
-                refs.extend(batch['answer_texts'])
+            all_preds.extend(preds)
+            all_refs.extend(answer_texts)
     
+    # Compute average loss
+    avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
+    
+    # Gather predictions and loss from all processes
+    all_preds = accelerator.gather_for_metrics(all_preds)
+    all_refs = accelerator.gather_for_metrics(all_refs)
+    avg_loss = accelerator.reduce(torch.tensor(avg_loss).to(accelerator.device), reduction="mean").item()
+    
+    # Compute metrics on main process
     if accelerator.is_main_process:
-        metrics = compute_metrics(preds, refs)
-        metrics['loss'] = np.mean(losses)
-        return metrics, preds, refs
-    
-    return None, [], []
+        metrics = compute_metrics(all_preds, all_refs)
+        metrics['loss'] = avg_loss  # ✅ Add loss to metrics
+        return metrics, all_preds, all_refs
+    else:
+        return {'loss': avg_loss}, [], []
 
 
 def train(model, train_dl, val_dl, tokenizer, config, accelerator):
-    """Training loop."""
-    optimizer = optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
+    """Training loop with validation."""
+    optimizer = optim.AdamW(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     
-    total_steps = len(train_dl) * config.epochs // config.grad_accum_steps
-    scheduler = get_linear_schedule_with_warmup(optimizer, config.warmup_steps, total_steps)
+    num_training_steps = len(train_dl) * config.num_epochs
+    num_warmup_steps = config.warmup_steps
+    
+    if num_warmup_steps > 0:
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=num_training_steps
+        )
+    else:
+        from torch.optim.lr_scheduler import ConstantLR
+        scheduler = ConstantLR(optimizer, factor=1.0, total_iters=1)
     
     model, optimizer, train_dl, val_dl, scheduler = accelerator.prepare(
         model, optimizer, train_dl, val_dl, scheduler
     )
     
-    best_score = 0.0
+    if accelerator.is_main_process:
+        logger.info(f"Starting training for {config.num_epochs} epochs")
+        logger.info(f"Total training steps: {num_training_steps}")
+        logger.info(f"Warmup steps: {num_warmup_steps} ({'disabled' if num_warmup_steps == 0 else 'enabled'})")
+        logger.info(f"Early stopping patience: {config.patience} validation checks (based on validation loss)")
+        logger.info(f"Validation every {config.eval_every_n_epochs} epochs")  # ✅ Added
+    
+    best_val_loss = float('inf')
+    best_epoch = 0
+    global_step = 0
     patience_counter = 0
     
-    for epoch in range(config.epochs):
+    for epoch in range(config.num_epochs):
+        # Training
         model.train()
-        total_loss = 0.0
+        epoch_loss = 0
+        epoch_steps = 0
         
-        pbar = tqdm(train_dl, desc=f"Epoch {epoch+1}/{config.epochs}", disable=not accelerator.is_main_process)
+        train_bar = tqdm(train_dl, desc=f"Epoch {epoch+1}/{config.num_epochs} [Train]", 
+                        disable=not accelerator.is_main_process)
         
-        for step, batch in enumerate(pbar):
-            with accelerator.accumulate(model):
-                chunk_embeddings = batch['chunk_embeddings']
-                question_embedding = batch['question_embedding']
-                chunk_mask = batch['chunk_mask']
-                answer_ids = batch['answer_ids']
-                answer_mask = batch['answer_mask']
-                
-                outputs = model(chunk_embeddings, question_embedding, chunk_mask, answer_ids, answer_mask)
-                loss = outputs.loss
-                
-                accelerator.backward(loss)
-                
-                if accelerator.sync_gradients:
+        for batch in train_bar:
+            chunk_embeds = batch['chunk_embeddings']
+            chunk_mask = batch['chunk_mask']
+            question_embeds = batch['question_embedding']
+            answer_ids = batch['answer_ids']
+            answer_mask = batch['answer_mask']
+            
+            outputs = model(
+                chunk_embeddings=chunk_embeds,
+                question_embedding=question_embeds,
+                chunk_mask=chunk_mask,
+                answer_ids=answer_ids,
+                answer_mask=answer_mask
+            )
+            
+            loss = outputs.loss
+            accelerator.backward(loss / config.grad_accum_steps)
+            
+            if (global_step + 1) % config.grad_accum_steps == 0:
+                if config.max_grad_norm > 0:
                     accelerator.clip_grad_norm_(model.parameters(), config.max_grad_norm)
                 
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
-                
-                total_loss += loss.item()
-                pbar.set_postfix({'loss': loss.item()})
-        
-        # Evaluate
-        if (epoch + 1) % config.eval_every_n_epochs == 0:
-            val_metrics, val_preds, val_refs = evaluate(model, val_dl, tokenizer, config, accelerator, desc="Validation")
             
-            if accelerator.is_main_process and val_metrics:
-                logger.info(f"\nEpoch {epoch+1} Validation:")
-                logger.info(f"  Loss: {val_metrics['loss']:.4f}")
-                logger.info(f"  ROUGE-1: {val_metrics['rouge1']:.4f}")
-                logger.info(f"  ROUGE-L: {val_metrics['rougeL']:.4f}")
-                logger.info(f"  BERT F1: {val_metrics['bert_f1']:.4f}")
-                logger.info(f"  Exact Match: {val_metrics['exact_match']:.4f}")
+            epoch_loss += loss.item()
+            epoch_steps += 1
+            global_step += 1
+            
+            if accelerator.is_main_process:
+                train_bar.set_postfix({
+                    'loss': f"{loss.item():.4f}",
+                    'avg_loss': f"{epoch_loss/epoch_steps:.4f}",
+                    'lr': f"{scheduler.get_last_lr()[0]:.2e}"
+                })
+        
+        avg_train_loss = epoch_loss / epoch_steps
+        
+        # ✅ Validation only every N epochs
+        if (epoch + 1) % config.eval_every_n_epochs == 0:
+            if accelerator.is_main_process:
+                logger.info(f"\nEpoch {epoch+1}/{config.num_epochs} - Avg train loss: {avg_train_loss:.4f}")
+                logger.info("Running validation...")
+            
+            val_metrics, val_preds, val_refs = evaluate(
+                model, val_dl, tokenizer, config, accelerator, desc="Validation"
+            )
+            
+            if accelerator.is_main_process:
+                val_loss = val_metrics.get('loss', float('inf'))
                 
-                # Save best model
-                score = val_metrics['rougeL'] + val_metrics['exact_match']
-                if score > best_score:
-                    best_score = score
+                logger.info(f"Validation metrics:")
+                logger.info(f"  loss: {val_loss:.4f}")
+                for k, v in val_metrics.items():
+                    if k != 'loss':
+                        logger.info(f"  {k}: {v:.4f}")
+                
+                # Save best model based on validation loss
+                if val_loss < best_val_loss:
+                    improvement = best_val_loss - val_loss
+                    best_val_loss = val_loss
+                    best_epoch = epoch + 1
                     patience_counter = 0
-                    torch.save(accelerator.unwrap_model(model).state_dict(), 
-                              Path(config.output_dir) / "best_model.pt")
-                    logger.info(f"  New best model saved! Score: {score:.4f}")
+                    
+                    # Save checkpoint
+                    output_dir = Path(config.output_dir)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    unwrapped_model = accelerator.unwrap_model(model)
+                    
+                    checkpoint = {
+                        'epoch': epoch + 1,
+                        'model_state_dict': unwrapped_model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'scheduler_state_dict': scheduler.state_dict(),
+                        'best_val_loss': best_val_loss,
+                        'config': vars(config),
+                    }
+                    
+                    torch.save(checkpoint, output_dir / "best_model.pt")
+                    
+                    # Save predictions and references for best model
+                    predictions_file = output_dir / f"best_predictions_epoch_{epoch+1}.json"
+                    predictions_data = {
+                        'epoch': epoch + 1,
+                        'val_loss': val_loss,
+                        'metrics': val_metrics,
+                        'predictions': [
+                            {
+                                'prediction': pred,
+                                'reference': ref
+                            }
+                            for pred, ref in zip(val_preds, val_refs)
+                        ]
+                    }
+                    
+                    with open(predictions_file, 'w') as f:
+                        json.dump(predictions_data, f, indent=2)
+                    
+                    logger.info(f"✓ Saved best model (Val Loss: {best_val_loss:.4f}, improved by {improvement:.4f})")
+                    logger.info(f"✓ Saved predictions to {predictions_file}")
+                    logger.info(f"✓ Best epoch so far: {best_epoch}")
                 else:
                     patience_counter += 1
+                    logger.info(f"No improvement. Patience: {patience_counter}/{config.patience} (Best val loss: {best_val_loss:.4f})")
                 
+                # Save predictions for this validation epoch
+                all_predictions_file = output_dir / f"val_predictions_epoch_{epoch+1}.json"
+                all_predictions_data = {
+                    'epoch': epoch + 1,
+                    'val_loss': val_loss,
+                    'metrics': val_metrics,
+                    'predictions': [
+                        {
+                            'prediction': pred,
+                            'reference': ref
+                        }
+                        for pred, ref in zip(val_preds, val_refs)
+                    ]
+                }
+                
+                with open(all_predictions_file, 'w') as f:
+                    json.dump(all_predictions_data, f, indent=2)
+                logger.info(f"✓ Saved epoch predictions to {all_predictions_file}")
+                
+                # Early stopping
                 if patience_counter >= config.patience:
-                    logger.info(f"Early stopping after {epoch+1} epochs")
+                    logger.info(f"\n{'='*80}")
+                    logger.info(f"Early stopping triggered after {epoch + 1} epochs")
+                    logger.info(f"Best epoch: {best_epoch} with validation loss: {best_val_loss:.4f}")
+                    logger.info(f"{'='*80}")
                     break
+            
+            accelerator.wait_for_everyone()
+        else:
+            # ✅ Just log training loss when not validating
+            if accelerator.is_main_process:
+                logger.info(f"\nEpoch {epoch+1}/{config.num_epochs} - Avg train loss: {avg_train_loss:.4f} (no validation)")
+        
+        accelerator.wait_for_everyone()
+    
+    if accelerator.is_main_process:
+        logger.info("\n" + "="*80)
+        logger.info(f"Training complete!")
+        logger.info(f"Best epoch: {best_epoch}")
+        logger.info(f"Best validation loss: {best_val_loss:.4f}")
+        logger.info(f"Total epochs run: {epoch + 1}")
+        logger.info("="*80)
 
 
 def main():
@@ -436,7 +581,8 @@ def main():
         test_dl = DataLoader(test_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
         
         model = BartQAModel(config.bart_model, config.embedding_dim, config.question_dim, config)
-        model.load_state_dict(torch.load(model_path, map_location='cpu'))
+        checkpoint = torch.load(model_path)  # ✅ Removed map_location='cpu'
+        model.load_state_dict(checkpoint['model_state_dict'])
         model, test_dl = accelerator.prepare(model, test_dl)
         
         test_metrics, test_preds, test_refs = evaluate(
@@ -445,10 +591,39 @@ def main():
         
         if accelerator.is_main_process and test_metrics:
             logger.info("\nTest Results:")
+            logger.info(f"  Loss: {test_metrics.get('loss', 'N/A')}")
             logger.info(f"  ROUGE-1: {test_metrics['rouge1']:.4f}")
+            logger.info(f"  ROUGE-2: {test_metrics['rouge2']:.4f}")
             logger.info(f"  ROUGE-L: {test_metrics['rougeL']:.4f}")
             logger.info(f"  BERT F1: {test_metrics['bert_f1']:.4f}")
             logger.info(f"  Exact Match: {test_metrics['exact_match']:.4f}")
+            
+            # Save test predictions
+            output_dir = Path(config.output_dir)
+            test_predictions_file = output_dir / "test_predictions.json"
+            
+            test_predictions_data = {
+                'metrics': test_metrics,
+                'predictions': [
+                    {
+                        'prediction': pred,
+                        'reference': ref
+                    }
+                    for pred, ref in zip(test_preds, test_refs)
+                ]
+            }
+            
+            with open(test_predictions_file, 'w') as f:
+                json.dump(test_predictions_data, f, indent=2)
+            
+            logger.info(f"\n✓ Test predictions saved to {test_predictions_file}")
+            
+            # Save metrics separately
+            test_metrics_file = output_dir / "test_metrics.json"
+            with open(test_metrics_file, 'w') as f:
+                json.dump(test_metrics, f, indent=2)
+            
+            logger.info(f"✓ Test metrics saved to {test_metrics_file}")
         
         return
     

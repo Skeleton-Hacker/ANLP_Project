@@ -1,0 +1,29 @@
+name: next-level-lm
+channels:
+  - nvidia
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch=2.3.1
+  - pytorch-cuda=12.1
+  - matplotlib
+  - seaborn
+  - pandas
+  - scikit-learn
+  - tqdm
+  - transformers>=4.38.0
+  - datasets>=2.15.0
+  - numpy
+  - nltk
+  - huggingface_hub>=0.30.0
+  - sentence-transformers
+  - accelerate
+  - safetensors
+  - rouge-score
+  - evaluate
+  - peft
+  - protobuf
+  - sentencepiece
+  - pip

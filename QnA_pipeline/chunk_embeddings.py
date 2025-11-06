@@ -27,8 +27,8 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 @dataclass
 class EmbeddingConfig:
-    chunked_data_dir: str = "/ssd_scratch/yr_chunked_data"
-    output_dir: str = "/ssd_scratch/yr_chunked_data"
+    chunked_data_dir: str = "chunked_data"
+    output_dir: str = "chunked_data"
     # splits: List[str] = field(default_factory=lambda: ["train", "validation", "test"])
     splits: List[str] = field(default_factory=lambda: ["test"])
 

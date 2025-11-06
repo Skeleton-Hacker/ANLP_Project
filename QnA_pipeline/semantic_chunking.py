@@ -29,14 +29,14 @@ class Config:
     model_name: str = "BAAI/bge-large-en-v1.5"
     threshold: float = 0.7
     max_samples: Optional[int] = None
-    output_dir: str = "/ssd_scratch/yr_chunked_data"
+    output_dir: str = "chunked_data"  # Changed from /tmp/yr_chunked_data
     splits: List[str] = field(default_factory=lambda: ["train", "validation", "test"])
-    batch_size: int =  4 # Document batch size (how many docs to process at once)
-    embedding_batch_size: int = 256  # Batch size for encoding sentences
-    max_sentences_per_doc: int = 10000  # Split very large documents
-    dataloader_workers: int = 4  # Num workers for data loading
-    use_distributed: bool = True  # Use multi-GPU inference
-    memory_threshold_gb: float = 12.0  # GPU memory threshold for safety
+    batch_size: int = 4
+    embedding_batch_size: int = 256
+    max_sentences_per_doc: int = 10000
+    dataloader_workers: int = 4
+    use_distributed: bool = True
+    memory_threshold_gb: float = 12.0
 
 
 class SemanticSentenceChunker:

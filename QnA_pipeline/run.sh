@@ -1,25 +1,47 @@
 #!/bin/bash
+# filepath: /home/yajatr/Documents/Codes/Acads/Sem5/ANLP/ANLP_Project/QnA_pipeline/run.sh
 
-# QnA Pipeline Execution Script
-# This script runs the complete QA pipeline for NarrativeQA dataset
-
-set -e  # Exit on error
+set -e
 
 echo "=========================================="
-echo "QnA Pipeline - Question Answering"
+echo "QnA Pipeline - Using Pre-computed Chunks"
 echo "=========================================="
 
-# Step 1: Semantic Chunking (using pipeline_2 code)
+# Set NCCL environment variables for RTX 4000 series
+export NCCL_P2P_DISABLE="1"
+export NCCL_IB_DISABLE="1"
+
+# Verify chunked data exists
 echo ""
-echo "Step 1: Running Semantic Chunking..."
+echo "Step 1: Verifying chunked data..."
 echo "=========================================="
-accelerate launch semantic_chunking.py
 
-# Step 2: Process QA Data with Embeddings
-echo ""
-echo "Step 2: Processing QA Data with Chunk Embeddings..."
-echo "=========================================="
-python chunk_qa_data.py
+if [ ! -f "chunked_data/train_chunks_encoded.pkl" ]; then
+    echo "ERROR: Chunked data not found in chunked_data/"
+    echo "Please ensure the following files exist:"
+    echo "  - train_chunks_encoded.pkl"
+    echo "  - validation_chunks_encoded.pkl"
+    echo "  - test_chunks_encoded.pkl"
+    exit 1
+fi
+
+echo "✓ Found chunked data files:"
+ls -lh chunked_data/*_chunks*.pkl
+
+# Step 2: Create QA encoded files
+# echo ""
+# echo "Step 2: Creating QA encoded files from chunks..."
+# echo "=========================================="
+# accelerate launch chunk_qa_data.py  # Changed from 'python' to 'accelerate launch'
+
+# # Verify QA files were created
+# if [ ! -f "chunked_data/train_qa_encoded.pkl" ]; then
+#     echo "ERROR: Failed to create QA encoded files"
+#     exit 1
+# fi
+
+# echo "✓ QA encoded files created:"
+# ls -lh chunked_data/*_qa_encoded.pkl
 
 # Step 3: Train BART QA Model
 echo ""
