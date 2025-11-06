@@ -53,7 +53,7 @@ class Config:
     warmup_steps: int = 500
     grad_accum_steps: int = 2
     max_grad_norm: float = 1.0
-    patience: int = 20  # Increased patience
+    patience: int = 3
     eval_every_n_epochs: int = 1
 
     # Generation - KEY CHANGES TO PREVENT REPETITION
@@ -472,12 +472,8 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
                 logger.info(f"Val Loss: {val_metrics['loss']:.4f} | " +
                           f"ROUGE-1: {val_metrics['rouge1']:.4f} | " +
                           f"ROUGE-2: {val_metrics['rouge2']:.4f} | " +
+                          f"ROUGE-L: {val_metrics['rougeL']:.4f} | " +
                           f"BERT-F1: {val_metrics['bert_f1']:.4f}")
-
-                val_ds = val_dl.dataset if hasattr(val_dl, 'dataset') else None
-                if val_ds is not None:
-                    sample_doc_texts = [val_ds[i]['doc_text'] for i in range(min(3, len(val_ds)))]
-                    print_sample_outputs(val_preds[:3], val_refs[:3], sample_doc_texts[:3], epoch + 1, num_samples=3)
 
                 metrics_file = Path(config.output_dir) / "training_metrics.json"
                 with open(metrics_file, 'w') as f:
@@ -554,11 +550,13 @@ def compare_base(config, accelerator):
     base_metrics = compute_metrics(base_preds, base_refs)
 
     if accelerator.is_main_process:
-        # Save comparison results to text file
-        comparison_file = Path("evaluations") / "comparison_results_t5_finetuned.txt"
-        comparison_file.parent.mkdir(exist_ok=True)
+        # Create evaluations directory
+        eval_dir = Path("evaluations")
+        eval_dir.mkdir(exist_ok=True)
         
-        with open(comparison_file, 'w') as f:
+        # Save table with metrics comparison
+        table_file = eval_dir / "table_t5_finetuned.txt"
+        with open(table_file, 'w') as f:
             f.write("="*80 + "\n")
             f.write("MODEL COMPARISON: T5 (Finetuned on Chunks) vs T5 Base Pretrained\n")
             f.write("="*80 + "\n\n")
@@ -570,20 +568,24 @@ def compare_base(config, accelerator):
                 base_val = base_metrics[metric]
                 improvement = ((ft_val - base_val) / base_val * 100) if base_val else 0
                 f.write(f"{metric:<20} {ft_val:>15.4f} {base_val:>15.4f} {improvement:>14.1f}%\n")
-            
-            f.write("\n" + "="*80 + "\n")
-            f.write("SAMPLE OUTPUTS COMPARISON\n")
+        
+        # Save samples (25 samples with reference and generated summaries)
+        samples_file = eval_dir / "samples_t5_finetuned.txt"
+        with open(samples_file, 'w') as f:
+            f.write("="*80 + "\n")
+            f.write("SAMPLE OUTPUTS: T5 Finetuned Model\n")
             f.write("="*80 + "\n\n")
             
-            for i in range(min(5, len(ft_preds))):
+            num_samples = min(25, len(ft_preds))
+            for i in range(num_samples):
                 f.write(f"Sample {i+1}:\n")
-                f.write(f"{'Reference':<12}: {ft_refs[i]}\n")
-                f.write(f"{'Finetuned':<12}: {ft_preds[i]}\n")
-                f.write(f"{'Base':<12}: {base_preds[i]}\n")
+                f.write(f"Reference: {ft_refs[i]}\n")
+                f.write(f"Generated: {ft_preds[i]}\n")
                 f.write("-" * 80 + "\n\n")
         
-        logger.info(f"Comparison results saved to {comparison_file}")
-        logger.info("Comparison Results:")
+        logger.info(f"Table saved to {table_file}")
+        logger.info(f"Samples saved to {samples_file}")
+        logger.info("\nComparison Results:")
         logger.info(f"{'Metric':<15} {'Finetuned':>12} {'Base':>12} {'Improvement':>12}")
         logger.info("-" * 55)
         for metric in ['rouge1', 'rouge2', 'rougeL', 'bert_f1']:
@@ -677,9 +679,6 @@ def main():
             logger.info("="*80)
             logger.info(f"ROUGE-1: {metrics['rouge1']:.4f} | ROUGE-2: {metrics['rouge2']:.4f}")
             logger.info(f"ROUGE-L: {metrics['rougeL']:.4f} | BERT-F1: {metrics['bert_f1']:.4f}")
-            
-            sample_docs = [test_ds[i]['doc_text'] for i in range(min(5, len(test_ds)))]
-            print_sample_outputs(preds[:5], refs[:5], sample_docs[:5], "FINAL", num_samples=5)
 
 
 if __name__ == "__main__":

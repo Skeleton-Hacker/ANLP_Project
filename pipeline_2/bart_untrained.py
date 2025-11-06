@@ -53,7 +53,7 @@ class Config:
     warmup_steps: int = 500
     grad_accum_steps: int = 2
     max_grad_norm: float = 1.0
-    patience: int = 20
+    patience: int = 3
     eval_every_n_epochs: int = 1  # Evaluate every epoch
 
     # Generation
@@ -463,36 +463,17 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
 
             if accelerator.is_main_process:
                 # Log metrics
-                logger.info(f"\n{'='*80}")
-                logger.info(f"Epoch {epoch+1} Results:")
-                logger.info(f"{'='*80}")
-                logger.info(f"Training Loss: {avg_train_loss:.4f}")
-                logger.info(f"Validation Metrics:")
-                logger.info(f"  Loss:     {val_metrics['loss']:.4f}")
-                logger.info(f"  ROUGE-1:  {val_metrics['rouge1']:.4f}")
-                logger.info(f"  ROUGE-2:  {val_metrics['rouge2']:.4f}")
-                logger.info(f"  ROUGE-L:  {val_metrics['rougeL']:.4f}")
-                logger.info(f"  BERT-F1:  {val_metrics['bert_f1']:.4f}")
+                logger.info(f"\nEpoch {epoch+1} - Train Loss: {avg_train_loss:.4f}")
+                logger.info(f"Val Loss: {val_metrics['loss']:.4f} | " +
+                          f"ROUGE-1: {val_metrics['rouge1']:.4f} | " +
+                          f"ROUGE-2: {val_metrics['rouge2']:.4f} | " +
+                          f"ROUGE-L: {val_metrics['rougeL']:.4f} | " +
+                          f"BERT-F1: {val_metrics['bert_f1']:.4f}")
 
-                # Print sample outputs
-                val_ds = val_dl.dataset if hasattr(val_dl, 'dataset') else None
-                if val_ds is not None:
-                    sample_doc_texts = [val_ds[i]['doc_text'] for i in range(min(5, len(val_ds)))]
-                    print_sample_outputs(val_preds[:5], val_refs[:5], sample_doc_texts[:5], epoch + 1)
-
-                # Log training history
-                logger.info(f"\nTraining History:")
-                logger.info(f"  Average Training Loss: {np.mean(history['train_loss']):.4f}")
-                logger.info(f"  Best Validation Loss: {min(history['val_loss']):.4f}")
-                logger.info(f"  Best ROUGE-1: {max(history['val_rouge1']):.4f}")
-                logger.info(f"  Best BERT-F1: {max(history['val_bert_f1']):.4f}")
-
-                # Save metrics to both JSON and log file
+                # Save metrics to JSON
                 metrics_file = Path(config.output_dir) / "training_metrics.json"
                 with open(metrics_file, 'w') as f:
                     json.dump(history, f, indent=2)
-
-                logger.info(f"Metrics saved to: {metrics_file}")
 
             # Early stopping based on validation loss
             if val_metrics['loss'] < best_val_loss:
@@ -551,18 +532,11 @@ def eval_only(config, accelerator):
         logger.info("\n" + "="*80)
         logger.info("FINAL TEST RESULTS")
         logger.info("="*80)
-        logger.info("\nMetrics:")
-        logger.info("-"*40)
         logger.info(f"Loss:      {metrics['loss']:.4f}")
         logger.info(f"ROUGE-1:   {metrics['rouge1']:.4f}")
         logger.info(f"ROUGE-2:   {metrics['rouge2']:.4f}")
         logger.info(f"ROUGE-L:   {metrics['rougeL']:.4f}")
         logger.info(f"BERT-F1:   {metrics['bert_f1']:.4f}")
-
-        # Print detailed sample outputs
-        logger.info("\nDETAILED SAMPLE OUTPUTS")
-        logger.info("="*80)
-        print_sample_outputs(preds[:5], refs[:5], [test_ds[i]['doc_text'] for i in range(5)], "final")
 
         # Save results
         Path("evaluations").mkdir(exist_ok=True)
@@ -680,11 +654,13 @@ def compare_base(config, accelerator):
     base_metrics = compute_metrics(base_preds, base_refs)
 
     if accelerator.is_main_process:
-        # Save comparison results to text file
-        comparison_file = Path("evaluations") / "comparison_results_bart_untrained.txt"
-        comparison_file.parent.mkdir(exist_ok=True)
+        # Create evaluations directory
+        eval_dir = Path("evaluations")
+        eval_dir.mkdir(exist_ok=True)
         
-        with open(comparison_file, 'w') as f:
+        # Save table with metrics comparison
+        table_file = eval_dir / "table_bart_untrained.txt"
+        with open(table_file, 'w') as f:
             f.write("="*80 + "\n")
             f.write("MODEL COMPARISON: BART (Untrained on Chunks) vs BART Base Pretrained\n")
             f.write("="*80 + "\n\n")
@@ -696,21 +672,24 @@ def compare_base(config, accelerator):
                 base_val = base_metrics[metric]
                 diff = ((untrained_val - base_val) / base_val * 100) if base_val else 0
                 f.write(f"{metric:<20} {untrained_val:>15.4f} {base_val:>15.4f} {diff:>14.1f}%\n")
-            
-            f.write("\n" + "="*80 + "\n")
-            f.write("SAMPLE OUTPUTS COMPARISON\n")
+        
+        # Save samples (25 samples with reference and generated summaries)
+        samples_file = eval_dir / "samples_bart_untrained.txt"
+        with open(samples_file, 'w') as f:
+            f.write("="*80 + "\n")
+            f.write("SAMPLE OUTPUTS: BART Untrained Model\n")
             f.write("="*80 + "\n\n")
             
-            for i in range(min(5, len(untrained_preds))):
+            num_samples = min(25, len(untrained_preds))
+            for i in range(num_samples):
                 f.write(f"Sample {i+1}:\n")
-                f.write(f"{'Reference':<12}: {untrained_refs[i]}\n")
-                f.write(f"{'Untrained':<12}: {untrained_preds[i]}\n")
-                f.write(f"{'Base':<12}: {base_preds[i]}\n")
+                f.write(f"Reference: {untrained_refs[i]}\n")
+                f.write(f"Generated: {untrained_preds[i]}\n")
                 f.write("-" * 80 + "\n\n")
         
-        logger.info(f"Comparison results saved to {comparison_file}")
-        
-        logger.info("Comparison Results:")
+        logger.info(f"Table saved to {table_file}")
+        logger.info(f"Samples saved to {samples_file}")
+        logger.info("\nComparison Results:")
         logger.info(f"{'Metric':<15} {'Untrained':>12} {'Base':>12} {'Difference':>12}")
         logger.info("-" * 55)
         for metric in ['rouge1', 'rouge2', 'rougeL', 'bert_f1']:
