@@ -2,7 +2,7 @@
 ```bash
 pip install -U bitsandbytes
 ```
-
+pip install bert_score
 
 1. First preprocess the data (multi-GPU)
 ```bash

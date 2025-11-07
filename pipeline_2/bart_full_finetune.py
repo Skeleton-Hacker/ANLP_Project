@@ -42,7 +42,7 @@ class Config:
     # Model
     bart_model: str = "facebook/bart-base"
     embedding_dim: int = 1024  # BGE-M3 embedding dimension
-    freeze_decoder: bool = False  # Whether to freeze the BART decoder parameters
+    freeze_decoder: bool = True  # Whether to freeze the BART decoder parameters
 
     # Training
     batch_size: int = 8
