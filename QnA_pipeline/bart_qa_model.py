@@ -37,25 +37,25 @@ class Config:
 
     # Model
     bart_model: str = "facebook/bart-base"
-    embedding_dim: int = 1024
+    embedding_dim: int = 1024  # BGE-M3 embedding dimension
     freeze_decoder: bool = False
 
     # Training
     batch_size: int = 8
-    num_epochs: int = 75
-    learning_rate: float = 5e-4
+    num_epochs: int = 25  # Changed from 'epochs'
+    learning_rate: float = 5e-4  # Changed from 'lr'
     weight_decay: float = 1e-3
     warmup_steps: int = 0
-    warmup_ratio: float = 0.0
+    warmup_ratio: float = 0.0  # Added for scheduler
     grad_accum_steps: int = 2
     max_grad_norm: float = 1.0
-    patience: int = 10
-    eval_every_n_epochs: int = 10
+    patience: int = 20
+    eval_every_n_epochs: int = 1
 
     # Generation
     max_chunks: int = 800
-    max_answer_len: int = 150
-    min_answer_len: int = 20
+    max_answer_len: int = 150  # Changed from 'max_answer_len'
+    min_answer_len: int = 20   # Changed from 'min_answer_len'
     num_beams: int = 6
 
     # Question encoding
@@ -385,8 +385,7 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
         logger.info(f"Starting training for {config.num_epochs} epochs")
         logger.info(f"Total training steps: {num_training_steps}")
         logger.info(f"Warmup steps: {num_warmup_steps} ({'disabled' if num_warmup_steps == 0 else 'enabled'})")
-        logger.info(f"Early stopping patience: {config.patience} validation checks (based on validation loss)")
-        logger.info(f"Validation every {config.eval_every_n_epochs} epochs")  # ✅ Added
+        logger.info(f"Early stopping patience: {config.patience} epochs (based on validation loss)")
     
     best_val_loss = float('inf')
     best_epoch = 0
@@ -441,77 +440,51 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
         
         avg_train_loss = epoch_loss / epoch_steps
         
-        # ✅ Validation only every N epochs
-        if (epoch + 1) % config.eval_every_n_epochs == 0:
-            if accelerator.is_main_process:
-                logger.info(f"\nEpoch {epoch+1}/{config.num_epochs} - Avg train loss: {avg_train_loss:.4f}")
-                logger.info("Running validation...")
+        # Validation
+        if accelerator.is_main_process:
+            logger.info(f"\nEpoch {epoch+1}/{config.num_epochs} - Avg train loss: {avg_train_loss:.4f}")
+            logger.info("Running validation...")
+        
+        val_metrics, val_preds, val_refs = evaluate(
+            model, val_dl, tokenizer, config, accelerator, desc="Validation"
+        )
+        
+        if accelerator.is_main_process:
+            val_loss = val_metrics.get('loss', float('inf'))
             
-            val_metrics, val_preds, val_refs = evaluate(
-                model, val_dl, tokenizer, config, accelerator, desc="Validation"
-            )
+            logger.info(f"Validation metrics:")
+            logger.info(f"  loss: {val_loss:.4f}")
+            for k, v in val_metrics.items():
+                if k != 'loss':
+                    logger.info(f"  {k}: {v:.4f}")
             
-            if accelerator.is_main_process:
-                val_loss = val_metrics.get('loss', float('inf'))
+            # Save best model based on validation loss
+            if val_loss < best_val_loss:
+                improvement = best_val_loss - val_loss
+                best_val_loss = val_loss
+                best_epoch = epoch + 1
+                patience_counter = 0
                 
-                logger.info(f"Validation metrics:")
-                logger.info(f"  loss: {val_loss:.4f}")
-                for k, v in val_metrics.items():
-                    if k != 'loss':
-                        logger.info(f"  {k}: {v:.4f}")
+                # Save checkpoint
+                output_dir = Path(config.output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
                 
-                # Save best model based on validation loss
-                if val_loss < best_val_loss:
-                    improvement = best_val_loss - val_loss
-                    best_val_loss = val_loss
-                    best_epoch = epoch + 1
-                    patience_counter = 0
-                    
-                    # Save checkpoint
-                    output_dir = Path(config.output_dir)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    unwrapped_model = accelerator.unwrap_model(model)
-                    
-                    checkpoint = {
-                        'epoch': epoch + 1,
-                        'model_state_dict': unwrapped_model.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'scheduler_state_dict': scheduler.state_dict(),
-                        'best_val_loss': best_val_loss,
-                        'config': vars(config),
-                    }
-                    
-                    torch.save(checkpoint, output_dir / "best_model.pt")
-                    
-                    # Save predictions and references for best model
-                    predictions_file = output_dir / f"best_predictions_epoch_{epoch+1}.json"
-                    predictions_data = {
-                        'epoch': epoch + 1,
-                        'val_loss': val_loss,
-                        'metrics': val_metrics,
-                        'predictions': [
-                            {
-                                'prediction': pred,
-                                'reference': ref
-                            }
-                            for pred, ref in zip(val_preds, val_refs)
-                        ]
-                    }
-                    
-                    with open(predictions_file, 'w') as f:
-                        json.dump(predictions_data, f, indent=2)
-                    
-                    logger.info(f"✓ Saved best model (Val Loss: {best_val_loss:.4f}, improved by {improvement:.4f})")
-                    logger.info(f"✓ Saved predictions to {predictions_file}")
-                    logger.info(f"✓ Best epoch so far: {best_epoch}")
-                else:
-                    patience_counter += 1
-                    logger.info(f"No improvement. Patience: {patience_counter}/{config.patience} (Best val loss: {best_val_loss:.4f})")
+                unwrapped_model = accelerator.unwrap_model(model)
                 
-                # Save predictions for this validation epoch
-                all_predictions_file = output_dir / f"val_predictions_epoch_{epoch+1}.json"
-                all_predictions_data = {
+                checkpoint = {
+                    'epoch': epoch + 1,
+                    'model_state_dict': unwrapped_model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    'best_val_loss': best_val_loss,
+                    'config': vars(config),
+                }
+                
+                torch.save(checkpoint, output_dir / "best_model.pt")
+                
+                # ✅ Save predictions and references for best model
+                predictions_file = output_dir / f"best_predictions_epoch_{epoch+1}.json"
+                predictions_data = {
                     'epoch': epoch + 1,
                     'val_loss': val_loss,
                     'metrics': val_metrics,
@@ -524,23 +497,42 @@ def train(model, train_dl, val_dl, tokenizer, config, accelerator):
                     ]
                 }
                 
-                with open(all_predictions_file, 'w') as f:
-                    json.dump(all_predictions_data, f, indent=2)
-                logger.info(f"✓ Saved epoch predictions to {all_predictions_file}")
+                with open(predictions_file, 'w') as f:
+                    json.dump(predictions_data, f, indent=2)
                 
-                # Early stopping
-                if patience_counter >= config.patience:
-                    logger.info(f"\n{'='*80}")
-                    logger.info(f"Early stopping triggered after {epoch + 1} epochs")
-                    logger.info(f"Best epoch: {best_epoch} with validation loss: {best_val_loss:.4f}")
-                    logger.info(f"{'='*80}")
-                    break
+                logger.info(f"✓ Saved best model (Val Loss: {best_val_loss:.4f}, improved by {improvement:.4f})")
+                logger.info(f"✓ Saved predictions to {predictions_file}")
+                logger.info(f"✓ Best epoch so far: {best_epoch}")
+            else:
+                patience_counter += 1
+                logger.info(f"No improvement. Patience: {patience_counter}/{config.patience} (Best val loss: {best_val_loss:.4f})")
             
-            accelerator.wait_for_everyone()
-        else:
-            # ✅ Just log training loss when not validating
-            if accelerator.is_main_process:
-                logger.info(f"\nEpoch {epoch+1}/{config.num_epochs} - Avg train loss: {avg_train_loss:.4f} (no validation)")
+            # ✅ Also save predictions for every epoch (optional - for debugging)
+            all_predictions_file = output_dir / f"val_predictions_epoch_{epoch+1}.json"
+            all_predictions_data = {
+                'epoch': epoch + 1,
+                'val_loss': val_loss,
+                'metrics': val_metrics,
+                'predictions': [
+                    {
+                        'prediction': pred,
+                        'reference': ref
+                    }
+                    for pred, ref in zip(val_preds, val_refs)
+                ]
+            }
+            
+            with open(all_predictions_file, 'w') as f:
+                json.dump(all_predictions_data, f, indent=2)
+            logger.info(f"✓ Saved epoch predictions to {all_predictions_file}")
+            
+            # Early stopping
+            if patience_counter >= config.patience:
+                logger.info(f"\n{'='*80}")
+                logger.info(f"Early stopping triggered after {epoch + 1} epochs")
+                logger.info(f"Best epoch: {best_epoch} with validation loss: {best_val_loss:.4f}")
+                logger.info(f"{'='*80}")
+                break
         
         accelerator.wait_for_everyone()
     
@@ -581,8 +573,7 @@ def main():
         test_dl = DataLoader(test_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
         
         model = BartQAModel(config.bart_model, config.embedding_dim, config.question_dim, config)
-        checkpoint = torch.load(model_path)  # ✅ Removed map_location='cpu'
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(torch.load(model_path, map_location='cpu'))
         model, test_dl = accelerator.prepare(model, test_dl)
         
         test_metrics, test_preds, test_refs = evaluate(
@@ -591,39 +582,10 @@ def main():
         
         if accelerator.is_main_process and test_metrics:
             logger.info("\nTest Results:")
-            logger.info(f"  Loss: {test_metrics.get('loss', 'N/A')}")
             logger.info(f"  ROUGE-1: {test_metrics['rouge1']:.4f}")
-            logger.info(f"  ROUGE-2: {test_metrics['rouge2']:.4f}")
             logger.info(f"  ROUGE-L: {test_metrics['rougeL']:.4f}")
             logger.info(f"  BERT F1: {test_metrics['bert_f1']:.4f}")
             logger.info(f"  Exact Match: {test_metrics['exact_match']:.4f}")
-            
-            # Save test predictions
-            output_dir = Path(config.output_dir)
-            test_predictions_file = output_dir / "test_predictions.json"
-            
-            test_predictions_data = {
-                'metrics': test_metrics,
-                'predictions': [
-                    {
-                        'prediction': pred,
-                        'reference': ref
-                    }
-                    for pred, ref in zip(test_preds, test_refs)
-                ]
-            }
-            
-            with open(test_predictions_file, 'w') as f:
-                json.dump(test_predictions_data, f, indent=2)
-            
-            logger.info(f"\n✓ Test predictions saved to {test_predictions_file}")
-            
-            # Save metrics separately
-            test_metrics_file = output_dir / "test_metrics.json"
-            with open(test_metrics_file, 'w') as f:
-                json.dump(test_metrics, f, indent=2)
-            
-            logger.info(f"✓ Test metrics saved to {test_metrics_file}")
         
         return
     
