@@ -1,28 +1,23 @@
-0.  Download bitsandbytes for quantised model for llama
-```bash
-pip install -U bitsandbytes
-```
-pip install bert_score
-
 1. First preprocess the data (multi-GPU)
 ```bash
-accelerate launch --config_file accelerate_config.yaml semantic_chunking.py
+accelerate launch semantic_chunking.py
 ```
 
 2. For the normal embedding (multi-GPU)
 ```bash
-accelerate launch --config_file accelerate_config.yaml chunk_embeddings.py
+accelerate launch  chunk_embeddings.py
 ```
 
-3. For using the llama adapter (multi-GPU)
+
+3.For using the code
 ```bash
-accelerate launch --config_file accelerate_config.yaml llama_adapter.py
-```
-
-4.For using the t5 adapter (multi-GPU)
-```bash
-accelerate launch --config_file accelerate_config.yaml t5_adapter.py
+accelerate launch <filename>.py
 ```
 
 
-Mention about the BERT score similarity between llama adapter and llama base.
+- Use `--compare-base` flag to run the test set and get the evaluation metrics in it.
+
+- *_full_finetune means encoder and decoder is trainable. Config class freeze_decoder = True means decoder is Frozen while False means it is trainable
+- *_untrained means no pretrained weights
+- semantic_chunking_stopwords.py is the semantic chunking version that utilises the stopwords, lemmatisation,etc.
+- semantic_chunking_sweep_table.py is to find the optimal threshold value for the chunk size

@@ -1,8 +1,3 @@
-0.  Download bitsandbytes for quantised model for llama
-```bash
-pip install -U bitsandbytes
-```
-
 
 1. First preprocess the data
 ```bash
@@ -23,6 +18,4 @@ accelerate launch llama_adapter.py
 ```bash
 accelerate launch t5_adapter.py
 ```
-
-
-Mention about the BERT score similarity between llama adapter and llama base.
+- The files are appropriatley named, run the files accordingly 
