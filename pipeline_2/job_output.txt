@@ -57,3 +57,23 @@ You should probably TRAIN this model on a down-stream task to be able to use it 
 2025-12-11 22:10:36,118 - INFO - Base T5 generated (length=394)
 2025-12-11 22:10:36,119 - INFO - Waiting 10s before Gemini call...
 2025-12-11 22:10:46,129 - INFO - Calling Gemini API...
+2025-12-11 22:10:59,815 - INFO - Gemini generated summary (length=326)
+2025-12-11 22:10:59,816 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:11:02,792 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:11:05,651 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+Processing samples:  12%|█▏        | 3/25 [01:55<14:18, 39.02s/it]2025-12-11 22:11:08,923 - INFO - Processing sample 140 (story_id: 5a3c3fa94456d41df5d8711b33687c39f2aa1ca8)
+2025-12-11 22:11:12,163 - INFO - Finetuned T5 generated (length=548)
+2025-12-11 22:11:13,465 - INFO - Base T5 generated (length=162)
+2025-12-11 22:11:13,465 - INFO - Waiting 10s before Gemini call...
+2025-12-11 22:11:23,475 - INFO - Calling Gemini API...
+2025-12-11 22:11:39,515 - INFO - Gemini generated summary (length=234)
+2025-12-11 22:11:39,515 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:11:42,450 - INFO - Using default tokenizer.
