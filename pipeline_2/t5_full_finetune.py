@@ -43,7 +43,7 @@ class Config:
     # Model
     t5_model: str = "t5-base"
     embedding_dim: int = 1024  # BGE-M3 embedding dimension
-    freeze_decoder: bool = True
+    freeze_decoder: bool = False
 
     # Training
     batch_size: int = 2

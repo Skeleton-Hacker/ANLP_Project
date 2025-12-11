@@ -1,87 +1,59 @@
 ==========================================
-SLURM_JOB_ID = 2552688
-SLURM_NODELIST = gnode033
+SLURM_JOB_ID = 2552996
+SLURM_NODELIST = gnode006
 SLURM_JOB_GPUS = 0,1,2,3
 ==========================================
 ==========================================
-SLURM_JOB_ID = 2552688
-SLURM_NODELIST = gnode033
+SLURM_JOB_ID = 2552996
+SLURM_NODELIST = gnode006
 SLURM_JOB_GPUS = 0,1,2,3
 ==========================================
 Micromamba environment activated!
 Python 3.10.19
-2025-12-11 09:14:44,282 - __main__ - INFO - GPU Information:
-2025-12-11 09:14:44,282 - __main__ - INFO -   - Available GPUs: 4
-2025-12-11 09:14:44,282 - __main__ - INFO -   - Accelerator device: cuda:0
-2025-12-11 09:14:44,283 - __main__ - INFO -   - Device name: NVIDIA GeForce GTX 1080 Ti
-2025-12-11 09:14:44,283 - __main__ - INFO -   - Memory: 10.9 GB
-2025-12-11 09:14:44,283 - __main__ - INFO - ================================================================================
-2025-12-11 09:14:44,283 - __main__ - INFO - OPTIMIZED Multi-GPU Semantic Chunking Pipeline
-2025-12-11 09:14:44,283 - __main__ - INFO - ================================================================================
-2025-12-11 09:14:44,283 - __main__ - INFO - Number of processes: 4
-2025-12-11 09:14:44,283 - __main__ - INFO - Use distributed: True
-2025-12-11 09:14:44,283 - __main__ - INFO - Model: BAAI/bge-large-en-v1.5
-2025-12-11 09:14:44,283 - __main__ - INFO - Threshold: 0.7
-2025-12-11 09:14:44,283 - __main__ - INFO - Dataset: deepmind/narrativeqa
-2025-12-11 09:14:44,283 - __main__ - INFO - Max samples per split: All
-2025-12-11 09:14:44,283 - __main__ - INFO - Splits to process: ['train', 'validation', 'test']
-2025-12-11 09:14:44,283 - __main__ - INFO - Output directory: chunked_data
-2025-12-11 09:14:44,283 - __main__ - INFO - Document batch size: 4
-2025-12-11 09:14:44,283 - __main__ - INFO - Embedding batch size: 256
-2025-12-11 09:14:44,283 - __main__ - INFO - Max sentences per doc: 10000
-2025-12-11 09:14:44,283 - __main__ - INFO - DataLoader workers: 4
-2025-12-11 09:14:44,283 - __main__ - INFO - Memory threshold: 12.0 GB
-2025-12-11 09:14:44,283 - __main__ - INFO - ================================================================================
-2025-12-11 09:14:44,284 - __main__ - INFO - Output directory created: /home2/gr/ANLP_Project/pipeline_2/chunked_data
-2025-12-11 09:14:44,828 - __main__ - INFO - ================================================================================
-2025-12-11 09:14:44,828 - __main__ - INFO - Processing TRAIN split
-2025-12-11 09:14:44,828 - __main__ - INFO - ================================================================================
-2025-12-11 09:14:44,828 - __main__ - INFO - Loading train data...
-2025-12-11 09:14:44,828 - load_dataset - INFO - Loading dataset deepmind/narrativeqa split=train
-`trust_remote_code` is not supported anymore.
-Please check that the Hugging Face dataset 'deepmind/narrativeqa' isn't based on a loading script and remove `trust_remote_code`.
-If the dataset is based on a loading script, please ask the dataset author to remove it and convert it to a standard format like Parquet.
-2025-12-11 09:14:44,829 - datasets.load - ERROR - `trust_remote_code` is not supported anymore.
-Please check that the Hugging Face dataset 'deepmind/narrativeqa' isn't based on a loading script and remove `trust_remote_code`.
-If the dataset is based on a loading script, please ask the dataset author to remove it and convert it to a standard format like Parquet.
-2025-12-11 09:14:48,469 - load_dataset - INFO - Loaded dataset with 32747 examples. Sample keys: ['document', 'question', 'answers']
-2025-12-11 09:14:48,469 - load_dataset - INFO - Restructuring dataset by story ID and cleaning text...
-Processing train examples:   0%|          | 0/32747 [00:00<?, ?ex/s]Processing train examples:  14%|█▍        | 4560/32747 [00:00<00:00, 45598.96ex/s]Processing train examples:  94%|█████████▍| 30930/32747 [00:00<00:00, 173804.83ex/s]Processing train examples: 100%|██████████| 32747/32747 [00:01<00:00, 28506.55ex/s] 
-2025-12-11 09:15:31,617 - load_dataset - INFO - Total stories after restructuring: 1102
-2025-12-11 09:15:33,633 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cuda:2
-2025-12-11 09:15:33,633 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cuda:1
-2025-12-11 09:15:33,633 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cuda:3
-2025-12-11 09:15:33,633 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: BAAI/bge-large-en-v1.5
-2025-12-11 09:15:33,633 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: BAAI/bge-large-en-v1.5
-2025-12-11 09:15:33,633 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: BAAI/bge-large-en-v1.5
-2025-12-11 09:15:33,682 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cuda:0
-2025-12-11 09:15:33,682 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: BAAI/bge-large-en-v1.5
-2025-12-11 09:15:37,671 - __main__ - INFO - Initialized OptimizedGraphChunker with:
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Model: BAAI/bge-large-en-v1.5
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Device: cuda:0
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Threshold: 0.7
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Embedding batch size: 256
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Max sentences per doc: 10000
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Processes: 4
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Process index: 0
-2025-12-11 09:15:37,671 - __main__ - INFO - Distributed processing setup:
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Total stories: 1102
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Processes: 4
-2025-12-11 09:15:37,671 - __main__ - INFO -   - Stories per process: ~275
-2025-12-11 09:15:37,671 - __main__ - INFO - Process 0: Processing 275 stories
-GPU 0 - Processing:   0%|          | 0/69 [00:00<?, ?it/s]2025-12-11 09:15:37,854 - __main__ - INFO - Process 1: Processing 275 stories
-2025-12-11 09:15:38,097 - __main__ - INFO - Process 2: Processing 275 stories
-2025-12-11 09:15:38,120 - __main__ - INFO - Process 3: Processing 277 stories
-2025-12-11 09:15:46,597 - __main__ - WARNING - Document has 10520 sentences, splitting into batches of 10000
-GPU 0 - Processing:   0%|          | 0/69 [01:39<?, ?it/s, processed=4, memory=1.3GB]GPU 0 - Processing:   1%|▏         | 1/69 [01:40<1:53:23, 100.05s/it, processed=4, memory=1.3GB]GPU 0 - Processing:   3%|▎         | 2/69 [02:25<1:15:35, 67.70s/it, processed=4, memory=1.3GB] GPU 0 - Processing:   4%|▍         | 3/69 [04:02<1:29:14, 81.13s/it, processed=4, memory=1.3GB]GPU 0 - Processing:   6%|▌         | 4/69 [04:45<1:11:36, 66.10s/it, processed=4, memory=1.3GB]GPU 0 - Processing:   7%|▋         | 5/69 [05:54<1:11:35, 67.12s/it, processed=4, memory=1.3GB]2025-12-11 09:22:06,692 - __main__ - WARNING - Document has 14017 sentences, splitting into batches of 10000
-GPU 0 - Processing:   9%|▊         | 6/69 [06:44<1:04:34, 61.51s/it, processed=4, memory=1.3GB]2025-12-11 09:23:27,075 - __main__ - WARNING - Document has 10833 sentences, splitting into batches of 10000
-GPU 0 - Processing:  10%|█         | 7/69 [08:12<1:12:21, 70.02s/it, processed=4, memory=1.3GB]GPU 0 - Processing:  12%|█▏        | 8/69 [10:15<1:28:30, 87.06s/it, processed=4, memory=1.3GB]GPU 0 - Processing:  13%|█▎        | 9/69 [11:19<1:19:42, 79.71s/it, processed=4, memory=1.3GB]2025-12-11 09:27:53,942 - __main__ - WARNING - Document has 10831 sentences, splitting into batches of 10000
-GPU 0 - Processing:  14%|█▍        | 10/69 [12:33<1:16:38, 77.95s/it, processed=4, memory=1.3GB]GPU 0 - Processing:  14%|█▍        | 10/69 [13:25<1:16:38, 77.95s/it, processed=44, memory=1.3GB]GPU 0 - Processing:  16%|█▌        | 11/69 [13:25<1:07:37, 69.95s/it, processed=44, memory=1.3GB]GPU 0 - Processing:  17%|█▋        | 12/69 [14:26<1:03:51, 67.21s/it, processed=44, memory=1.3GB]GPU 0 - Processing:  19%|█▉        | 13/69 [15:09<55:54, 59.89s/it, processed=44, memory=1.3GB]  GPU 0 - Processing:  20%|██        | 14/69 [15:47<48:55, 53.37s/it, processed=44, memory=1.3GB]GPU 0 - Processing:  22%|██▏       | 15/69 [17:26<1:00:25, 67.15s/it, processed=44, memory=1.3GB]2025-12-11 09:34:05,082 - __main__ - WARNING - Document has 13791 sentences, splitting into batches of 10000
-GPU 0 - Processing:  23%|██▎       | 16/69 [18:34<59:36, 67.48s/it, processed=44, memory=1.3GB]  GPU 0 - Processing:  25%|██▍       | 17/69 [19:33<56:05, 64.73s/it, processed=44, memory=1.3GB]GPU 0 - Processing:  26%|██▌       | 18/69 [20:51<58:35, 68.92s/it, processed=44, memory=1.3GB]GPU 0 - Processing:  28%|██▊       | 19/69 [21:30<49:50, 59.80s/it, processed=44, memory=1.3GB]GPU 0 - Processing:  29%|██▉       | 20/69 [22:47<53:09, 65.09s/it, processed=44, memory=1.3GB]2025-12-11 09:38:59,994 - __main__ - WARNING - Document has 18392 sentences, splitting into batches of 10000
-GPU 0 - Processing:  29%|██▉       | 20/69 [24:52<53:09, 65.09s/it, processed=84, memory=1.3GB]GPU 0 - Processing:  30%|███       | 21/69 [24:52<1:06:27, 83.08s/it, processed=84, memory=1.3GB]GPU 0 - Processing:  32%|███▏      | 22/69 [26:16<1:05:08, 83.15s/it, processed=84, memory=1.3GB]GPU 0 - Processing:  33%|███▎      | 23/69 [27:36<1:03:11, 82.42s/it, processed=84, memory=1.3GB]GPU 0 - Processing:  35%|███▍      | 24/69 [28:21<53:18, 71.07s/it, processed=84, memory=1.3GB]  GPU 0 - Processing:  36%|███▌      | 25/69 [28:59<44:53, 61.22s/it, processed=84, memory=1.3GB]GPU 0 - Processing:  38%|███▊      | 26/69 [29:34<38:10, 53.27s/it, processed=84, memory=1.3GB]2025-12-11 09:45:29,207 - __main__ - WARNING - Document has 13570 sentences, splitting into batches of 10000
-GPU 0 - Processing:  39%|███▉      | 27/69 [31:18<47:52, 68.38s/it, processed=84, memory=1.3GB]GPU 0 - Processing:  41%|████      | 28/69 [33:10<55:43, 81.54s/it, processed=84, memory=1.3GB]2025-12-11 09:51:06,086 - __main__ - WARNING - Document has 14565 sentences, splitting into batches of 10000
-GPU 0 - Processing:  42%|████▏     | 29/69 [35:29<1:05:50, 98.77s/it, processed=84, memory=1.3GB]2025-12-11 09:51:46,642 - __main__ - WARNING - Document has 16994 sentences, splitting into batches of 10000
-2025-12-11 09:52:44,887 - __main__ - WARNING - Document has 11660 sentences, splitting into batches of 10000
-2025-12-11 09:52:52,383 - __main__ - WARNING - Document has 17349 sentences, splitting into batches of 10000
-GPU 0 - Processing:  43%|████▎     | 30/69 [37:35<1:09:32, 106.99s/it, processed=84, memory=1.3GB]GPU 0 - Processing:  43%|████▎     | 30/69 [38:59<1:09:32, 106.99s/it, processed=124, memory=1.3GB]GPU 0 - Processing:  45%|████▍     | 31/69 [38:59<1:03:26, 100.17s/it, processed=124, memory=1.3GB]2025-12-11 09:54:40,369 - __main__ - WARNING - Document has 18442 sentences, splitting into batches of 10000
-GPU 0 - Processing:  46%|████▋     | 32/69 [39:49<52:25, 85.02s/it, processed=124, memory=1.3GB]   GPU 0 - Processing:  48%|████▊     | 33/69 [41:13<50:49, 84.70s/it, processed=124, memory=1.3GB]
+/home2/gr/mamba/envs/next-level-lm/lib/python3.10/site-packages/google/api_core/_python_version_support.py:266: FutureWarning: You are using a Python version (3.10.19) which Google will stop supporting in new releases of google.api_core once it reaches its end of life (2026-10-04). Please upgrade to the latest Python version, or at least Python 3.11, to continue receiving updates for google.api_core past that date.
+  warnings.warn(message, FutureWarning)
+2025-12-11 22:09:00,646 - INFO - Loading test dataset...
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+2025-12-11 22:09:05,780 - INFO - Loaded 355 samples from chunked_data/test_chunks_encoded.pkl
+2025-12-11 22:09:05,780 - INFO - Using device: cuda
+2025-12-11 22:09:08,401 - INFO - Configured Gemini model: gemini-2.5-flash
+2025-12-11 22:09:08,401 - INFO - Loading finetuned T5 model...
+2025-12-11 22:09:10,038 - INFO - Total params: 224,306,688
+2025-12-11 22:09:10,038 - INFO - Trainable params: 224,306,688
+2025-12-11 22:09:11,270 - INFO - Loading base T5 model...
+2025-12-11 22:09:13,164 - INFO - Evaluating 25 samples serially...
+Processing samples:   0%|          | 0/25 [00:00<?, ?it/s]2025-12-11 22:09:13,169 - INFO - Processing sample 327 (story_id: ef92e6a5b6fe08813c84e8349ddd2cb2dc842bc7)
+2025-12-11 22:09:16,632 - INFO - Finetuned T5 generated (length=594)
+2025-12-11 22:09:19,147 - INFO - Base T5 generated (length=267)
+2025-12-11 22:09:19,147 - INFO - Waiting 10s before Gemini call...
+2025-12-11 22:09:29,157 - INFO - Calling Gemini API...
+2025-12-11 22:09:38,479 - INFO - Gemini generated summary (length=224)
+2025-12-11 22:09:38,479 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:09:41,447 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:09:44,318 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+Processing samples:   4%|▍         | 1/25 [00:33<13:35, 33.98s/it]2025-12-11 22:09:47,155 - INFO - Processing sample 57 (story_id: 22d1af3e29dc599ec0634fe860359027adea6944)
+2025-12-11 22:09:50,397 - INFO - Finetuned T5 generated (length=575)
+2025-12-11 22:09:52,150 - INFO - Base T5 generated (length=224)
+2025-12-11 22:09:52,150 - INFO - Waiting 10s before Gemini call...
+2025-12-11 22:10:02,160 - INFO - Calling Gemini API...
+2025-12-11 22:10:21,625 - INFO - Gemini generated summary (length=282)
+2025-12-11 22:10:21,626 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:10:24,550 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:10:27,420 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+Processing samples:   8%|▊         | 2/25 [01:17<15:05, 39.38s/it]2025-12-11 22:10:30,314 - INFO - Processing sample 12 (story_id: 069ba0ceb78ef8fe8a193b7b4f225938f2044f0c)
+2025-12-11 22:10:33,595 - INFO - Finetuned T5 generated (length=483)
+2025-12-11 22:10:36,118 - INFO - Base T5 generated (length=394)
+2025-12-11 22:10:36,119 - INFO - Waiting 10s before Gemini call...
+2025-12-11 22:10:46,129 - INFO - Calling Gemini API...

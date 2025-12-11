@@ -7,7 +7,7 @@
 #SBATCH --output=job_output.txt
 #SBATCH --mail-user=george.rahul@research.iiit.ac.in
 #SBATCH --mail-type=ALL
-
+#SBATCH --nodelist=gnode006
 echo "=========================================="
 echo "SLURM_JOB_ID = $SLURM_JOB_ID"
 echo "SLURM_NODELIST = $SLURM_NODELIST"
@@ -42,6 +42,8 @@ cd /home2/gr/ANLP_Project/pipeline_2
 # ----------------------------------------------------------
 # RUN YOUR CODE
 # ----------------------------------------------------------
-accelerate launch --num_processes 4 semantic_chunking.py
-accelerate launch --num_processes 4 chunk_embeddings.py
-
+#accelerate launch --num_processes 4 semantic_chunking.py
+#accelerate launch --num_processes 4 chunk_embeddings.py
+#accelerate launch t5_full_finetune.py
+#accelerate launch t5_full_finetune.py --compare-base
+python compare_all_models.py --gemini-api-key AIzaSyBWxD8iPXrgsEEzgdX5O_dp0l5GUm5FEWQ
