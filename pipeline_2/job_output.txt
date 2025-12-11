@@ -77,3 +77,33 @@ You should probably TRAIN this model on a down-stream task to be able to use it 
 Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
 You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
 2025-12-11 22:11:42,450 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:11:45,298 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+Processing samples:  16%|█▌        | 4/25 [02:34<13:41, 39.11s/it]2025-12-11 22:11:48,148 - INFO - Processing sample 125 (story_id: 4ff62e050b4eba11e273a060f0e5b0080746ea79)
+2025-12-11 22:11:51,419 - INFO - Finetuned T5 generated (length=578)
+2025-12-11 22:11:53,042 - INFO - Base T5 generated (length=161)
+2025-12-11 22:11:53,043 - INFO - Waiting 10s before Gemini call...
+2025-12-11 22:12:03,053 - INFO - Calling Gemini API...
+2025-12-11 22:12:29,906 - INFO - Gemini generated summary (length=224)
+2025-12-11 22:12:29,907 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:12:32,798 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:12:35,914 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+Processing samples:  20%|██        | 5/25 [03:25<14:25, 43.26s/it]2025-12-11 22:12:38,766 - INFO - Processing sample 114 (story_id: 46e4a4aa0f4ba89cf4d4972f1b9f6657f56e8f63)
+2025-12-11 22:12:41,947 - INFO - Finetuned T5 generated (length=576)
+2025-12-11 22:12:43,527 - INFO - Base T5 generated (length=172)
+2025-12-11 22:12:43,527 - INFO - Waiting 10s before Gemini call...
+2025-12-11 22:12:53,537 - INFO - Calling Gemini API...
+2025-12-11 22:13:02,088 - INFO - Gemini generated summary (length=231)
+2025-12-11 22:13:02,089 - INFO - Using default tokenizer.
+Some weights of RobertaModel were not initialized from the model checkpoint at roberta-large and are newly initialized: ['pooler.dense.bias', 'pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+2025-12-11 22:13:04,982 - INFO - Using default tokenizer.
