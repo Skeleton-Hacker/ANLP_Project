@@ -2,6 +2,7 @@
 *.pkl
 *.safetensors
 *.pt
+*.md
 __pycache__/
 env/
 venv/

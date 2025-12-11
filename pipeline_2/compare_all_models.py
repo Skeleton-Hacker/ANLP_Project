@@ -95,7 +95,7 @@ class ModelComparator:
         if not self.enable_gemini:
             return "[GEMINI_DISABLED]"
 
-        prompt = f"Summarize the following story in one concise sentence:\n\n{text}\n\nSummary:"
+        prompt = f"Summarize the following story in 3-5 sentences:\n\n{text}\n\nSummary:"
         
         try:
             logger.info("Waiting 10s before Gemini call...")
